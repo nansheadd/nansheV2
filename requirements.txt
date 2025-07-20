@@ -1,0 +1,15 @@
+# --- Framework Web ---
+fastapi
+uvicorn[standard] # Pour le serveur ASGI, avec les dépendances standards
+
+# --- Base de Données ---
+sqlalchemy
+psycopg2-binary # Driver pour PostgreSQL
+
+# --- Configuration et Sécurité ---
+pydantic-settings # Pour gérer les variables d'environnement (ex: .env)
+passlib[bcrypt]   # Pour le hachage des mots de passe
+python-jose[cryptography] # Pour la gestion des tokens JWT
+
+# --- IA (pour plus tard) ---
+google-generativeai
