@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.session import engine
 from app.db.base_class import Base
 
+
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,5 +47,6 @@ def read_root():
     return {"message": "Welcome to Nanshe API V2!"}
 
 # Note : On ajoutera les routeurs de l'API ici plus tard
-# from app.api.v2.api import api_router
-# app.include_router(api_router, prefix="/api/v2")
+from app.api.v2.api import api_router
+
+app.include_router(api_router, prefix="/api/v2")
