@@ -2,7 +2,7 @@
 
 from sqlalchemy import Integer, String, Boolean, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base_class import Base
+from app.db.base import Base
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:

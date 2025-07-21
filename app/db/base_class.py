@@ -6,3 +6,4 @@ class Base(DeclarativeBase):
     Classe de base pour tous les modèles SQLAlchemy.
     Elle sera utilisée pour initialiser la base de données.
     """
+    pass

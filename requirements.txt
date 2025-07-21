@@ -8,8 +8,10 @@ psycopg2-binary # Driver pour PostgreSQL
 
 # --- Configuration et Sécurité ---
 pydantic-settings # Pour gérer les variables d'environnement (ex: .env)
-passlib[bcrypt]   # Pour le hachage des mots de passe
+passlib[bcrypt] # Pour le hachage des mots de passe
+bcrypt==3.2.2    
 python-jose[cryptography] # Pour la gestion des tokens JWT
+email-validator
 
 # --- IA (pour plus tard) ---
 google-generativeai

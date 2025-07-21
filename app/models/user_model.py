@@ -1,8 +1,8 @@
 # Fichier: nanshe/backend/app/models/user_model.py
 
-from sqlalchemy import Integer, String, Boolean, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base_class import Base
+from sqlalchemy import Integer, String, Boolean, DateTime, func # type: ignore
+from sqlalchemy.orm import Mapped, mapped_column, relationship # type: ignore
+from app.db.base import Base
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
 
