@@ -1,40 +1,24 @@
-# Fichier: nanshe/backend/app/crud/course_crud.py (CORRIGÉ)
+# Fichier: nanshe/backend/app/crud/course_crud.py (MIS À JOUR)
 from sqlalchemy.orm import Session
 from app.models.course_model import Course
-from app.schemas.course_schema import CourseCreate # On importe le bon schéma
+from app.schemas.course_schema import CourseCreate
+from app.core.ai_service import classify_course_topic, generate_learning_plan # <--- NOUVEL IMPORT
 
 def create_course(db: Session, course_in: CourseCreate) -> Course:
     """
-    Crée un nouveau cours.
-    1. (Simulé) Détermine le type de cours à partir du titre.
-    2. (Simulé) Génère le plan d'apprentissage.
+    Crée un nouveau cours en utilisant le service IA.
     """
+    # Étape 1: Classifier le sujet pour déterminer le type de cours
+    course_type = classify_course_topic(course_in.title)
 
-    # Simulation de la classification par IA
-    title_lower = course_in.title.lower()
-    course_type = "general"
-    if "philosophie" in title_lower:
-        course_type = "philosophy"
-    elif "math" in title_lower:
-        course_type = "math"
-    elif "japonais" in title_lower:
-        course_type = "language"
-
-    # Simulation de la génération du plan par IA
-    dummy_learning_plan = {
-        "overview": f"Un cours généré par IA sur {course_in.title}.",
-        "rpg_stats_schema": {"Compréhension": 0, "Mémorisation": 0},
-        "levels": [
-            {"level_title": f"Introduction à {course_in.title}", "category": "Fondamentaux"},
-            {"level_title": "Concepts Avancés", "category": "Approfondissement"}
-        ]
-    }
+    # Étape 2: Générer le plan d'apprentissage
+    learning_plan = generate_learning_plan(course_in.title, course_type)
 
     db_course = Course(
         title=course_in.title,
-        course_type=course_type, # On utilise le type déterminé
-        learning_plan_json=dummy_learning_plan,
-        description=f"Un cours sur {course_in.title}" # On ajoute une description par défaut
+        course_type=course_type,
+        description=learning_plan.get("overview", f"Un cours sur {course_in.title}"),
+        learning_plan_json=learning_plan
     )
 
     db.add(db_course)
