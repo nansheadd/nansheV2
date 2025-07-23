@@ -1,7 +1,8 @@
-# Fichier: nanshe/backend/app/schemas/course_schema.py
+# Fichier: nanshe/backend/app/schemas/course_schema.py (CORRIGÉ)
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
+# Ce schéma de base est utilisé par le modèle SQLAlchemy pour la réponse
 class CourseBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -10,12 +11,12 @@ class CourseBase(BaseModel):
     icon_url: Optional[str] = None
     header_image_url: Optional[str] = None
 
-class CourseCreate(CourseBase):
-    """ Schéma utilisé pour la création d'un cours via l'API. """
-    pass
+# Ce schéma est ce que le frontend ENVOIE. Il ne contient que le titre.
+class CourseCreate(BaseModel):
+    title: str
 
+# Ce schéma est ce que le backend RENVOIE.
 class Course(CourseBase):
-    """ Schéma utilisé pour renvoyer les données d'un cours via l'API. """
     id: int
     max_level: int
     learning_plan_json: Optional[Dict[str, Any]] = None
