@@ -54,3 +54,34 @@ def generate_learning_plan(title: str, course_type: str) -> dict:
     except (json.JSONDecodeError, Exception) as e:
         logger.error(f"Erreur lors de la génération du plan IA : {e}")
         return {"error": "Failed to generate learning plan"}
+    
+
+def generate_level_content(level_title: str, course_type: str) -> list[dict]:
+    """Appelle l'IA pour générer le contenu détaillé d'un niveau."""
+    if not model:
+        logger.warning("⚠️ Modèle IA non disponible. Contenu de niveau par défaut.")
+        return []
+
+    # Ce prompt est crucial. On lui demande de générer plusieurs types d'exercices.
+    prompt = f"""
+    Tu es un ingénieur pédagogique expert. Pour le niveau "{level_title}" d'un cours de type "{course_type}",
+    génère une liste de 3 à 5 "briques de savoir" au format JSON.
+    Chaque brique dans la liste doit être un objet JSON avec les clés suivantes :
+    - "title": un titre court et précis pour le concept (ex: "Le biais de confirmation").
+    - "category": une catégorie RPG pertinente (ex: "Psychologie Cognitive").
+    - "component_type": le type d'exercice parmi ['lesson', 'qcm', 'fill_in_the_blank'].
+    - "bloom_level": le niveau de taxonomie de Bloom ('remember', 'understand').
+    - "content_json": un objet contenant les données de l'exercice.
+        - Pour une "lesson", il doit contenir une clé "text".
+        - Pour un "qcm", il doit contenir "question", "options" (une liste de strings), et "correct_option_index" (un nombre).
+        - Pour un "fill_in_the_blank", il doit contenir "text_with_blanks" (avec des ___ ) et "answers" (une liste des mots manquants).
+
+    Assure-toi que la sortie soit une liste JSON valide, sans texte avant ou après.
+    """
+    try:
+        response = model.generate_content(prompt)
+        cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+        return json.loads(cleaned_response)
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"Erreur lors de la génération du contenu de niveau : {e}")
+        return [{"error": "Failed to generate level content"}]

@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from .user_course_progress_model import UserCourseProgress
     from .knowledge_component_model import KnowledgeComponent
+    from .level_model import Level
 
 class Course(Base):
     """
@@ -27,6 +28,7 @@ class Course(Base):
 
     progressions: Mapped[List["UserCourseProgress"]] = relationship(back_populates="course")
     knowledge_components: Mapped[List["KnowledgeComponent"]] = relationship(back_populates="course")
+    levels: Mapped[List["Level"]] = relationship(back_populates="course")
 
     def __repr__(self):
         return f"<Course(id={self.id}, title='{self.title}')>"

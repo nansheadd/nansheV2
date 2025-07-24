@@ -1,9 +1,13 @@
 # Fichier: nanshe/backend/app/crud/course_crud.py (MIS À JOUR)
 from sqlalchemy.orm import Session
 from typing import List
+from app.models.level_model import Level
 from app.models.course_model import Course
+
 from app.schemas.course_schema import CourseCreate
-from app.core.ai_service import classify_course_topic, generate_learning_plan # <--- NOUVEL IMPORT
+
+from app.core.ai_service import classify_course_topic, generate_learning_plan
+
 
 def create_course(db: Session, course_in: CourseCreate) -> Course:
     """
@@ -23,6 +27,20 @@ def create_course(db: Session, course_in: CourseCreate) -> Course:
     )
 
     db.add(db_course)
+    db.flush()
+    
+    # --- NOUVELLE LOGIQUE ---
+    # On crée les niveaux vides en même temps que le cours
+    levels_data = learning_plan.get("levels", [])
+    for i, level_data in enumerate(levels_data):
+        db_level = Level(
+            course_id=db_course.id,
+            title=level_data.get("level_title"),
+            level_order=i
+        )
+        db.add(db_level)
+    # -------------------------
+    
     db.commit()
     db.refresh(db_course)
     return db_course
