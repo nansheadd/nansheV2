@@ -1,6 +1,6 @@
 # Fichier: nanshe/backend/app/api/v2/endpoints/user_router.py (CORRIGÉ)
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.schemas import user_schema, token_schema
@@ -20,17 +20,38 @@ def create_user_endpoint(user_in: user_schema.UserCreate, db: Session = Depends(
     user = user_crud.create_user(db=db, user=user_in)
     return user
 
-@router.post("/login", response_model=token_schema.Token) # La route est maintenant "/login"
-def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
+@router.post("/login") # On retire le response_model, car on ne renvoie plus de token
+def login_for_access_token(
+    response: Response, # On injecte l'objet Response de FastAPI
+    db: Session = Depends(get_db), 
+    form_data: OAuth2PasswordRequestForm = Depends()
+):
     user = user_crud.get_user_by_username(db, username=form_data.username)
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
         )
+    
     access_token = security.create_access_token(subject=user.id)
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # On attache le token à un cookie HttpOnly
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,       # Le cookie est inaccessible en JavaScript
+        samesite="lax",      # Protection CSRF
+        secure=False,        # Mettre à True en production (HTTPS)
+        path="/"
+    )
+    return {"message": "Login successful"}
+
+@router.post("/logout")
+def logout(response: Response):
+    """Déconnecte l'utilisateur en supprimant le cookie."""
+    response.delete_cookie(key="access_token")
+    return {"message": "Logout successful"}
+
 
 @router.get("/me", response_model=user_schema.User) # La route est maintenant "/me"
 def read_users_me(current_user: User = Depends(get_current_user)):
