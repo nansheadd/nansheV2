@@ -1,14 +1,13 @@
-# Fichier: nanshe/backend/app/models/course_model.py
+# Fichier: nanshe/backend/app/models/course_model.py (CORRECTED)
 
-from sqlalchemy import Integer, String, Boolean, Text, JSON
+from sqlalchemy import Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base import Base
+from app.db.base_class import Base
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .user_course_progress_model import UserCourseProgress
-    from .knowledge_component_model import KnowledgeComponent
-    from .level_model import Level
+    from .level_model import Level # We need to know about levels
 
 class Course(Base):
     """
@@ -26,9 +25,13 @@ class Course(Base):
     max_level: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
     learning_plan_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
 
+    # --- Relations ---
     progressions: Mapped[List["UserCourseProgress"]] = relationship(back_populates="course")
-    knowledge_components: Mapped[List["KnowledgeComponent"]] = relationship(back_populates="course")
+
+    # This is the correct relationship now: A course has a list of levels.
     levels: Mapped[List["Level"]] = relationship(back_populates="course")
+
+    # THE INCORRECT RELATIONSHIP HAS BEEN REMOVED
 
     def __repr__(self):
         return f"<Course(id={self.id}, title='{self.title}')>"

@@ -52,7 +52,16 @@ def logout(response: Response):
     response.delete_cookie(key="access_token")
     return {"message": "Logout successful"}
 
-
-@router.get("/me", response_model=user_schema.User) # La route est maintenant "/me"
+@router.get("/me", response_model=user_schema.User)
 def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Récupère les informations de l'utilisateur actuellement connecté.
+    """
+    # --- DÉBOGAGE ---
+    print(f"--- REQUÊTE REÇUE SUR /users/me ---")
+    print(f"Utilisateur identifié : {current_user.username} (ID: {current_user.id})")
+    print(f"Objet utilisateur retourné : {current_user}")
+    print("---------------------------------")
+    # --- FIN DÉBOGAGE ---
+
     return current_user

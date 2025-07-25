@@ -6,6 +6,7 @@
 
 from app.db.base_class import Base
 from app.models.user_model import User
+from app.models.level_model import Level
 from app.models.course_model import Course
 from app.models.knowledge_component_model import KnowledgeComponent
 from app.models.user_knowledge_strength_model import UserKnowledgeStrength
