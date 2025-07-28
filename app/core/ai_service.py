@@ -62,21 +62,23 @@ def generate_level_content(level_title: str, course_type: str) -> list[dict]:
         logger.warning("⚠️ Modèle IA non disponible. Contenu de niveau par défaut.")
         return []
 
-    # Ce prompt est crucial. On lui demande de générer plusieurs types d'exercices.
     prompt = f"""
     Tu es un ingénieur pédagogique expert. Pour le niveau "{level_title}" d'un cours de type "{course_type}",
     génère une liste de 3 à 5 "briques de savoir" au format JSON.
-    Chaque brique dans la liste doit être un objet JSON avec les clés suivantes :
-    - "title": un titre court et précis pour le concept (ex: "Le biais de confirmation").
-    - "category": une catégorie RPG pertinente (ex: "Psychologie Cognitive").
-    - "component_type": le type d'exercice parmi ['lesson', 'qcm', 'fill_in_the_blank'].
-    - "bloom_level": le niveau de taxonomie de Bloom ('remember', 'understand').
-    - "content_json": un objet contenant les données de l'exercice.
-        - Pour une "lesson", il doit contenir une clé "text".
-        - Pour un "qcm", il doit contenir "question", "options" (une liste de strings), et "correct_option_index" (un nombre).
-        - Pour un "fill_in_the_blank", il doit contenir "text_with_blanks" (avec des ___ ) et "answers" (une liste des mots manquants).
+    Chaque brique doit avoir les clés suivantes: "title", "category", "component_type", "bloom_level", et "content_json".
 
-    Assure-toi que la sortie soit une liste JSON valide, sans texte avant ou après.
+    # --- MISE À JOUR IMPORTANTE ---
+    Le "component_type" doit être choisi parmi : ['lesson', 'qcm', 'fill_in_the_blank', 'reorder', 'categorization'].
+    
+    Le "content_json" doit correspondre au type :
+    - "lesson": {{"text": "..."}}
+    - "qcm": {{"question": "...", "options": [...], "correct_option_index": ...}}
+    - "fill_in_the_blank": {{"text_with_blanks": "...", "answers": [...]}}
+    - "reorder": {{"instruction": "...", "items": ["étape 1", "étape 2", "étape 3"]}} (fournis les items dans le bon ordre)
+    - "categorization": {{"instruction": "...", "categories": ["Cat A", "Cat B"], "items": [{{"text": "item1", "category": "Cat A"}}, {{"text": "item2", "category": "Cat B"}}]}}
+    # --- FIN DE LA MISE À JOUR ---
+
+    Assure-toi que la sortie soit une liste JSON valide. Varie les types de composants.
     """
     try:
         response = model.generate_content(prompt)
