@@ -1,48 +1,51 @@
-# Fichier: nanshe/backend/app/crud/level_crud.py (VERSION CORRECTE)
-from sqlalchemy.orm import Session
-from app.models import level_model, knowledge_component_model
-from app.core.ai_service import generate_level_content
+# Fichier: backend/app/crud/level_crud.py (REFONTE)
+from sqlalchemy.orm import Session, joinedload
+from app.models import level_model, chapter_model, user_course_progress_model
+from app.core.ai_service import generate_chapter_plan_for_level
 import logging
 
 logger = logging.getLogger(__name__)
 
-def get_level_content(db: Session, course_id: int, level_order: int):
+def get_level_with_chapters(db: Session, course_id: int, level_order: int, user_id: int):
     """
-    Récupère un niveau et son contenu. S'il n'a pas encore été généré,
-    il est créé à la volée.
+    Récupère un niveau et son plan de chapitres.
+    Si le plan n'existe pas, il est généré par l'IA.
+    Vérifie les droits d'accès de l'utilisateur.
     """
-    # 1. Trouver le niveau dans la base de données
-    level = db.query(level_model.Level).filter(
-        level_model.Level.course_id == course_id,
-        level_model.Level.level_order == level_order
+    # 1. Vérifier les droits d'accès
+    progress = db.query(user_course_progress_model.UserCourseProgress).filter_by(
+        user_id=user_id, course_id=course_id
     ).first()
+    
+    if not progress or level_order > progress.current_level_order:
+        logger.warning(f"Accès refusé pour l'utilisateur {user_id} au niveau {level_order}.")
+        return None
 
-    if not level:
-        return None # Niveau non trouvé
+    # 2. Trouver le niveau
+    level = db.query(level_model.Level).options(
+        joinedload(level_model.Level.chapters) # Pré-charge les chapitres
+    ).filter_by(course_id=course_id, level_order=level_order).first()
 
-    # 2. Vérifier si le contenu a déjà été généré
-    if not level.content_generated:
-        logger.info(f"Contenu non trouvé pour le niveau '{level.title}'. Génération en cours...")
+    if not level: return None
+
+    # 3. Générer le plan des chapitres si c'est la première fois
+    if not level.are_chapters_generated:
+        logger.info(f"Plan de chapitres non trouvé pour '{level.title}'. Génération IA...")
         
-        # 3. Appeler l'IA pour générer le contenu
-        components_data = generate_level_content(level.title, level.course.course_type)
-
-        # 4. Sauvegarder les nouvelles briques de savoir
-        for data in components_data:
-            if "error" not in data:
-                component = knowledge_component_model.KnowledgeComponent(
-                    level_id=level.id, # On lie à l'ID du niveau
-                    title=data.get("title"),
-                    category=data.get("category"),
-                    component_type=data.get("component_type"),
-                    bloom_level=data.get("bloom_level"),
-                    content_json=data.get("content_json")
-                )
-                db.add(component)
+        chapter_titles = generate_chapter_plan_for_level(level.title)
         
-        level.content_generated = True # On marque le niveau comme généré
+        for i, title in enumerate(chapter_titles):
+            chapter = chapter_model.Chapter(
+                level_id=level.id,
+                title=title,
+                chapter_order=i
+            )
+            db.add(chapter)
+        
+        level.are_chapters_generated = True
         db.add(level)
         db.commit()
-        db.refresh(level) # On rafraîchit pour charger les nouveaux composants
-
+        db.refresh(level)
+        logger.info(f"Génération du plan de chapitres terminée pour '{level.title}'.")
+    
     return level

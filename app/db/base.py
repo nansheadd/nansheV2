@@ -12,3 +12,4 @@ from app.models.knowledge_component_model import KnowledgeComponent
 from app.models.user_knowledge_strength_model import UserKnowledgeStrength
 from app.models.user_course_progress_model import UserCourseProgress
 from app.models.user_answer_log_model import UserAnswerLog
+from app.models.chapter_model import Chapter
