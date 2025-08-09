@@ -1,4 +1,4 @@
-# Fichier: nanshe/backend/app/api/v2/endpoints/level_router.py
+# Fichier: backend/app/api/v2/endpoints/level_router.py (CORRIGÉ)
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.schemas import level_schema
@@ -8,13 +8,17 @@ from app.models.user_model import User
 
 router = APIRouter()
 
-@router.get("/{course_id}/levels/{level_order}", response_model=level_schema.Level)
-def read_or_create_level_content(
-    course_id: int, level_order: int,
+@router.get("/{level_id}", response_model=level_schema.Level)
+def read_level_details(
+    level_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # On récupère l'utilisateur connecté
+    current_user: User = Depends(get_current_user)
 ):
-    level = level_crud.get_level_content(db, course_id=course_id, level_order=level_order, user_id=current_user.id)
+    """
+    Récupère les détails d'un niveau (ses chapitres).
+    Génère le plan des chapitres à la volée si nécessaire.
+    """
+    level = level_crud.get_level_with_chapters(db, level_id=level_id, user_id=current_user.id)
     if not level:
         raise HTTPException(status_code=403, detail="Level not found or access denied")
     return level
