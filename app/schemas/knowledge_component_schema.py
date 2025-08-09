@@ -3,9 +3,15 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
 class UserAnswer(BaseModel):
+    # On enrichit ce modèle pour qu'il contienne TOUTES les infos nécessaires au frontend
+    id: int
+    status: str
     is_correct: bool
     user_answer_json: Dict[str, Any]
-    class Config: from_attributes = True
+    ai_feedback: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
 
 class KnowledgeComponent(BaseModel):
     id: int

@@ -10,6 +10,8 @@ from app.models.user_model import User
 
 router = APIRouter()
 
+# Fichier: backend/app/api/v2/endpoints/course_router.py (partiel)
+
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(
     course_in: course_schema.CourseCreate,
@@ -18,17 +20,22 @@ def create_new_course(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Accepte une nouvelle demande de cours et lance la génération en arrière-plan.
+    Étape 1 (Synchrone) : Crée la "coquille" du cours et renvoie son ID.
+    Étape 2 (Asynchrone) : Lance la génération du plan de cours en arrière-plan.
     """
-    course = course_crud.create_course(db=db, course_in=course_in, creator=current_user)
+    # ÉTAPE 1 : On appelle une fonction qui crée JUSTE l'entrée en base de données.
+    course = course_crud.create_course_shell(db=db, course_in=course_in, creator=current_user)
+    
+    # ÉTAPE 2 : On lance la tâche de fond avec l'ID que nous avons maintenant.
     background_tasks.add_task(
-        course_crud.generate_course_content_task,
+        course_crud.generate_course_plan_task, # On renomme la tâche pour plus de clarté
         db=db,
         course_id=course.id,
         creator_id=current_user.id
     )
+    
+    # ÉTAPE 3 : On renvoie l'objet cours avec son ID au frontend.
     return course
-
 
 @router.post("/personalization-form", response_model=personalization_schema.PersonalizationForm)
 def get_personalization_form(
