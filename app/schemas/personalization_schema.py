@@ -15,3 +15,11 @@ class FormField(BaseModel):
 class PersonalizationForm(BaseModel):
     category: str
     fields: List[FormField]
+
+class UserTopicPerformance(BaseModel):
+    topic_category: str
+    mastery_score: float
+    total_attempts: int
+
+    class Config:
+        from_attributes = True

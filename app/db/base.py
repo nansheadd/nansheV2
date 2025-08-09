@@ -26,3 +26,4 @@ from app.models.knowledge_component_model import KnowledgeComponent # Dépend de
 #    Ces modèles ne peuvent être importés qu'APRÈS que `User` et `KnowledgeComponent` soient connus.
 from app.models.user_knowledge_strength_model import UserKnowledgeStrength # Dépend de `User` et `KnowledgeComponent`
 from app.models.user_answer_log_model import UserAnswerLog # Dépend de `User` et `KnowledgeComponent`
+from app.models.user_topic_performance_model import UserTopicPerformance

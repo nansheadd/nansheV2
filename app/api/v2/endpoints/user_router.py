@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from app.schemas import user_schema
+from app.schemas import user_schema, personalization_schema
+from typing import List # Assurez-vous que List est importé
 from app.crud import user_crud
 from app.core import security
 from app.api.v2.dependencies import get_db, get_current_user
@@ -59,3 +60,15 @@ def logout(response: Response):
 @router.get("/me", response_model=user_schema.User)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.get("/me/performance/{course_id}", response_model=List[personalization_schema.UserTopicPerformance])
+def read_user_performance(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Récupère les statistiques de performance de l'utilisateur pour un cours donné."""
+    performance_data = user_crud.get_user_performance_in_course(
+        db=db, user_id=current_user.id, course_id=course_id
+    )
+    return performance_data

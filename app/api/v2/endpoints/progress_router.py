@@ -53,3 +53,12 @@ def continue_discussion(
     
     # On renvoie le feedback complet qui contient le nouvel historique
     return updated_log.ai_feedback
+
+@router.post("/reset/chapter/{chapter_id}", status_code=status.HTTP_200_OK)
+def reset_chapter_answers(
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Réinitialise toutes les réponses d'un utilisateur pour un chapitre donné."""
+    return progress_crud.reset_user_answers_for_chapter(db, user_id=current_user.id, chapter_id=chapter_id)
