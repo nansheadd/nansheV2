@@ -1,6 +1,4 @@
-
-# Fichier: nanshe/backend/app/models/user_course_progress_model.py
-
+# Fichier: backend/app/models/user_course_progress_model.py (FINAL CORRIGÉ)
 from sqlalchemy import Integer, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
@@ -22,9 +20,12 @@ class UserCourseProgress(Base):
     course_id: Mapped[int] = mapped_column(Integer, ForeignKey("courses.id"), primary_key=True)
 
     # --- Métriques de Progression ---
-    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="in_progress") # ex: 'in_progress', 'completed'
+    status: Mapped[str] = mapped_column(String(50), default="in_progress")
+    
+    # --- CORRECTION : AJOUT DES CHAMPS MANQUANTS ---
     current_level_order: Mapped[int] = mapped_column(Integer, default=0)
+    current_chapter_order: Mapped[int] = mapped_column(Integer, default=0) # <-- CHAMP AJOUTÉ
+    # ---------------------------------------------
 
     # --- Données de Gamification ---
     rpg_stats_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)

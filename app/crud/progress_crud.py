@@ -1,4 +1,3 @@
-# Fichier: backend/app/crud/progress_crud.py (ARCHITECTURE FINALE COMPLÈTE)
 import logging
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
@@ -10,21 +9,54 @@ from app.models import (
     user_answer_log_model,
     chapter_model,
     level_model,
-    user_topic_performance_model
+    user_topic_performance_model,
+    user_course_progress_model
 )
 from app.schemas import progress_schema
 from app.core import ai_service
 
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
-# FONCTIONS UTILITAIRES (STATS & SRS)
-# ==============================================================================
+
+def advance_progress(db: Session, user: user_model.User, chapter: chapter_model.Chapter):
+    """Met à jour la progression de l'utilisateur après avoir terminé un chapitre."""
+    progress = db.query(user_course_progress_model.UserCourseProgress).filter_by(
+        user_id=user.id, course_id=chapter.level.course_id
+    ).first()
+    if not progress: return
+
+    # On avance seulement si l'utilisateur est sur ce chapitre ou l'a déjà dépassé
+    if chapter.level.level_order > progress.current_level_order: return
+    if chapter.chapter_order >= progress.current_chapter_order:
+        sorted_chapters = sorted(chapter.level.chapters, key=lambda c: c.chapter_order)
+        next_chapter_index = chapter.chapter_order + 1
+
+        if next_chapter_index < len(sorted_chapters):
+            progress.current_chapter_order = next_chapter_index
+            logger.info(f"PROGRESSION: User {user.id} a avancé au chapitre {next_chapter_index}")
+        else:
+            progress.current_level_order += 1
+            progress.current_chapter_order = 0
+            logger.info(f"PROGRESSION: User {user.id} a terminé le niveau et avancé au niveau {progress.current_level_order}")
+        db.commit()
+
+
+def check_and_advance_progress_if_chapter_complete(db: Session, user: user_model.User, component: knowledge_component_model.KnowledgeComponent):
+    """Vérifie si tous les exercices d'un chapitre sont corrects et avance la progression si c'est le cas."""
+    chapter = component.chapter
+    for kc in chapter.knowledge_components:
+        last_answer = db.query(user_answer_log_model.UserAnswerLog).filter_by(
+            user_id=user.id, component_id=kc.id
+        ).order_by(user_answer_log_model.UserAnswerLog.answered_at.desc()).first()
+        if not last_answer or last_answer.status != 'correct':
+            return # Le chapitre n'est pas encore terminé
+    
+    # Si on arrive ici, tous les exercices sont corrects
+    logger.info(f"PROGRESSION: Chapitre {chapter.id} complété par l'utilisateur {user.id}.")
+    advance_progress(db, user, chapter)
+
 
 def update_topic_performance(db: Session, user: user_model.User, component: knowledge_component_model.KnowledgeComponent, is_correct: bool):
-    """
-    Trouve ou crée une entrée de performance pour un sujet (catégorie) et la met à jour.
-    """
     topic_category = component.category
     course_id = component.chapter.level.course_id
 
@@ -58,7 +90,6 @@ def update_topic_performance(db: Session, user: user_model.User, component: know
     logger.info(f"STATISTIQUES: User {user.id}, Sujet '{topic_category}', Score: {performance.mastery_score:.2f}")
 
 def update_knowledge_strength(db: Session, user: user_model.User, component: knowledge_component_model.KnowledgeComponent, is_correct: bool):
-    """Met à jour la force de mémorisation de l'utilisateur pour un composant donné (SRS)."""
     strength_entry = db.query(user_knowledge_strength_model.UserKnowledgeStrength).filter_by(
         user_id=user.id, component_id=component.id
     ).first()
@@ -85,11 +116,7 @@ def update_knowledge_strength(db: Session, user: user_model.User, component: kno
 
     logger.info(f"SRS Update: User {user.id}, Component {component.id}, Correct: {is_correct}, New Strength: {strength_entry.strength}")
 
-# ==============================================================================
-# TÂCHE DE FOND POUR L'ANALYSE PAR L'IA
-# ==============================================================================
 def analyze_complex_answer_task(db: Session, answer_log_id: int):
-    """Tâche asynchrone pour analyser une réponse complexe (essai, discussion) via l'IA."""
     logger.info(f"ANALYSE IA : Démarrage pour la réponse ID: {answer_log_id}")
     answer_log = db.query(user_answer_log_model.UserAnswerLog).options(
         joinedload(user_answer_log_model.UserAnswerLog.knowledge_component)
@@ -128,7 +155,6 @@ def analyze_complex_answer_task(db: Session, answer_log_id: int):
         answer_log.ai_feedback = feedback_data
         answer_log.status = 'correct' if is_validated else 'incorrect'
         
-        # On met à jour les stats et le SRS APRÈS l'analyse de l'IA
         update_topic_performance(db, answer_log.user, component, is_validated)
         update_knowledge_strength(db, answer_log.user, component, is_validated)
         
@@ -141,14 +167,7 @@ def analyze_complex_answer_task(db: Session, answer_log_id: int):
         answer_log.ai_feedback = {"error": "L'analyse par l'IA a échoué."}
         db.commit()
 
-
-# ==============================================================================
-# FONCTION DE CONTINUATION DE DISCUSSION
-# ==============================================================================
 def add_message_to_discussion(db: Session, answer_log_id: int, user: user_model.User, history: list, user_message: str):
-    """
-    Gère un nouveau message dans une discussion, appelle l'IA et met à jour le log.
-    """
     answer_log = db.get(user_answer_log_model.UserAnswerLog, answer_log_id)
     if not answer_log or answer_log.user_id != user.id:
         return None
@@ -177,23 +196,13 @@ def add_message_to_discussion(db: Session, answer_log_id: int, user: user_model.
         logger.info(f"Discussion {answer_log_id} marquée comme terminée par l'IA.")
         update_knowledge_strength(db, user, component, True)
 
-    # --- CORRECTION DÉFINITIVE ---
-    # On notifie explicitement SQLAlchemy que le champ JSON a été modifié.
     flag_modified(answer_log, "ai_feedback")
-    # ---------------------------
 
     db.commit()
     db.refresh(answer_log)
     return answer_log
 
-# ==============================================================================
-# FONCTION PRINCIPALE DE TRAITEMENT DE LA RÉPONSE
-# ==============================================================================
 def process_user_answer(db: Session, user: user_model.User, answer_in: progress_schema.AnswerCreate, background_tasks):
-    """
-    Traite la soumission d'une réponse, corrige les exercices simples et lance
-    les tâches de fond pour les exercices complexes.
-    """
     component = db.query(knowledge_component_model.KnowledgeComponent).options(
         joinedload(knowledge_component_model.KnowledgeComponent.chapter)
         .joinedload(chapter_model.Chapter.level)
@@ -265,3 +274,39 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
     
     else:
         return {"status": "error", "feedback": f"Type d'exercice '{component.component_type}' non géré."}
+    
+
+def reset_user_answers_for_chapter(db: Session, user_id: int, chapter_id: int):
+    """
+    Supprime toutes les réponses, les forces de mémorisation et les statistiques
+    d'un utilisateur pour un chapitre spécifique.
+    """
+    # 1. Trouver tous les composants liés à ce chapitre
+    component_ids_query = db.query(knowledge_component_model.KnowledgeComponent.id).filter(
+        knowledge_component_model.KnowledgeComponent.chapter_id == chapter_id
+    )
+    component_ids = [c[0] for c in component_ids_query.all()]
+
+    if not component_ids:
+        return {"detail": "Aucun exercice à réinitialiser dans ce chapitre."}
+
+    # 2. Supprimer les logs de réponses de l'utilisateur pour ces composants
+    db.query(user_answer_log_model.UserAnswerLog).filter(
+        user_answer_log_model.UserAnswerLog.user_id == user_id,
+        user_answer_log_model.UserAnswerLog.component_id.in_(component_ids)
+    ).delete(synchronize_session=False)
+
+    # 3. Supprimer les forces de mémorisation (SRS) pour ces composants
+    db.query(user_knowledge_strength_model.UserKnowledgeStrength).filter(
+        user_knowledge_strength_model.UserKnowledgeStrength.user_id == user_id,
+        user_knowledge_strength_model.UserKnowledgeStrength.component_id.in_(component_ids)
+    ).delete(synchronize_session=False)
+
+    # 4. Réinitialiser les statistiques de performance par sujet pour ce chapitre
+    # (Cette partie est plus complexe car on ne veut pas supprimer la ligne, juste la mettre à jour)
+    # Pour l'instant, nous nous concentrons sur la suppression des réponses. La réinitialisation
+    # complète des stats pourra être une amélioration future.
+    
+    db.commit()
+    logger.info(f"Réponses réinitialisées pour l'utilisateur {user_id} dans le chapitre {chapter_id}.")
+    return {"detail": "Les réponses du chapitre ont été réinitialisées avec succès."}

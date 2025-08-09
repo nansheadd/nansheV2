@@ -61,4 +61,4 @@ def reset_chapter_answers(
     current_user: User = Depends(get_current_user)
 ):
     """Réinitialise toutes les réponses d'un utilisateur pour un chapitre donné."""
-    return progress_crud.reset_user_answers_for_chapter(db, user_id=current_user.id, chapter_id=chapter_id)
+    return progress_crud.reset_user_answers_for_chapter(db=db, user_id=current_user.id, chapter_id=chapter_id)
