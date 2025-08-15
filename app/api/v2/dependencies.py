@@ -5,7 +5,7 @@ from jose import jwt, JWTError
 
 from app.db.session import SessionLocal
 from app.core import security
-from app.models.user_model import User
+from app.models.user.user_model import User
 
 def get_db():
     db = SessionLocal()

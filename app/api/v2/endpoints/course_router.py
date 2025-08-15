@@ -1,12 +1,13 @@
 # Fichier: backend/app/api/v2/endpoints/course_router.py (VERSION FINALE)
+from app.schemas.course import course_schema
 from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
-from app.schemas import course_schema, personalization_schema
+from app.schemas.progress import personalization_schema
 from app.core import ai_service
-from app.crud import course_crud
+from app.crud.course import course_crud
 from app.api.v2.dependencies import get_db, get_current_user
-from app.models.user_model import User
+from app.models.user.user_model import User
 
 router = APIRouter()
 

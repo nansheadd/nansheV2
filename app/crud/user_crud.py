@@ -1,9 +1,9 @@
 # Fichier: nanshe/backend/app/crud/user_crud.py
 
 from sqlalchemy.orm import Session
-from app.models import user_topic_performance_model # Ajoutez cet import en haut
-from app.models.user_model import User
-from app.schemas.user_schema import UserCreate
+from app.models.progress import user_topic_performance_model # Ajoutez cet import en haut
+from app.models.user.user_model import User
+from app.schemas.user.user_schema import UserCreate
 from app.core.security import get_password_hash
 from typing import Optional
 

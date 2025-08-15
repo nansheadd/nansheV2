@@ -1,14 +1,15 @@
 # Fichier: nanshe/backend/app/api/v2/endpoints/user_router.py (CORRIGÉ)
 
+from app.schemas.user import user_schema
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from app.schemas import user_schema, personalization_schema
+from app.schemas.progress import personalization_schema
 from typing import List # Assurez-vous que List est importé
 from app.crud import user_crud
 from app.core import security
 from app.api.v2.dependencies import get_db, get_current_user
-from app.models.user_model import User
+from app.models.user.user_model import User
 from app.core.config import settings # <-- 1. ON IMPORTE LA CONFIG
 
 router = APIRouter()

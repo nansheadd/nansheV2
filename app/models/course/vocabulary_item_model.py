@@ -6,7 +6,7 @@ from app.db.base_class import Base
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .chapter_model import Chapter
+    from .course.chapter_model import Chapter
 
 class VocabularyItem(Base):
     __tablename__ = "vocabulary_items"

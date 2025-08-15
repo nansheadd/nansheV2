@@ -1,9 +1,12 @@
 # Fichier: backend/app/crud/chapter_crud.py (VERSION FINALE CORRIGÉE)
 import logging
+from app.models.course import chapter_model
+from app.models.course import knowledge_component_model
 from sqlalchemy.orm import Session, joinedload
-from app.models import chapter_model, knowledge_component_model, level_model
-from app.core.ai_service import generate_lesson_for_chapter, generate_exercises_for_lesson
+from app.models.course import level_model
 from app.services import language_chapter_generator
+from app.core.ai_service import generate_lesson_for_chapter, generate_exercises_for_lesson
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,7 @@ def generate_language_chapter_content_task(db: Session, chapter_id: int):
         return
     
     # On passe le contexte du cours au service de génération
-    language_chapter_generator._generate_pedagogical_content(db, chapter)
+    language_chapter_generator.generate_chapter_content_pipeline(db, chapter)
     
     
 def generate_lesson_task(db: Session, chapter_id: int):

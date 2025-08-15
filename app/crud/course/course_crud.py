@@ -1,8 +1,11 @@
 # Fichier: backend/app/crud/course_crud.py (VERSION MISE À JOUR)
+from app.models.user import user_model
+from app.models.course import course_model
+from app.models.course import level_model
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import not_, select
-from app.models import course_model, user_model, user_course_progress_model, level_model
-from app.schemas import course_schema
+from app.models.progress import user_course_progress_model
+from app.schemas.course import course_schema
 from app.core.ai_service import generate_learning_plan, classify_course_topic
 from app.services.language_course_generator import LanguageCourseGenerator
 from app.services.course_generator import CourseGenerator # <-- IMPORTER LE NOUVEAU SERVICE
@@ -49,10 +52,12 @@ def generate_course_plan_task(db: Session, course_id: int, creator_id: int):
         course_in = course_schema.CourseCreate(title=db_course.title, model_choice=db_course.model_choice)
 
         # Étape 2 : Aiguillage vers le bon générateur
+        
         if course_type == 'langue':
             logger.info(f"Cours de langue détecté. Utilisation de LanguageCourseGenerator pour le cours ID: {course_id}")
-            lang_generator = LanguageCourseGenerator(db=db, course_in=course_in, creator=creator)
-            # Cette méthode s'occupe de tout l'échafaudage pour les langues
+            # --- CORRECTION DE L'APPEL ---
+            # On passe l'objet db_course directement, on ne crée plus de course_in
+            lang_generator = LanguageCourseGenerator(db=db, db_course=db_course, creator=creator)
             lang_generator.generate_full_course_scaffold()
         else:
             logger.info(f"Cours standard détecté. Utilisation du générateur générique pour le cours ID: {course_id}")

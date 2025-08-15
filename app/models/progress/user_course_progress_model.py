@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from .user_model import User
+    from .user.user_model import User
     from .course_model import Course
 
 class UserCourseProgress(Base):

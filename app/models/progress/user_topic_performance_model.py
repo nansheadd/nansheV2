@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from .user_model import User
-    from .course_model import Course
+    from ..user.user_model import User
+    from ..course.course_model import Course
 
 class UserTopicPerformance(Base):
     """

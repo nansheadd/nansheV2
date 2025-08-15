@@ -1,18 +1,18 @@
 import logging
+from app.models.user import user_model
+from app.models.course import chapter_model
+from app.models.course import knowledge_component_model
+from app.models.course import level_model
+from app.models.progress import user_answer_log_model
+from app.models.progress import user_course_progress_model
+from app.models.progress import user_knowledge_strength_model
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 from datetime import datetime, timedelta, timezone
-from app.models import (
-    user_model,
-    knowledge_component_model,
-    user_knowledge_strength_model,
-    user_answer_log_model,
-    chapter_model,
-    level_model,
-    user_topic_performance_model,
-    user_course_progress_model
+from app.models.progress import (
+    user_topic_performance_model
 )
-from app.schemas import progress_schema
+from app.schemas.progress import progress_schema
 from app.core import ai_service
 
 logger = logging.getLogger(__name__)

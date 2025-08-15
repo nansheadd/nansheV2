@@ -1,9 +1,14 @@
 # Fichier: backend/app/services/course_generator.py
 import logging
+from app.models.user import user_model
+from app.models.course import chapter_model
+from app.models.course import course_model
+from app.models.course import knowledge_component_model
+from app.models.course import level_model
 from sqlalchemy.orm import Session
-from app.models import course_model,user_model, level_model, chapter_model, knowledge_component_model, user_course_progress_model
+from app.models.progress import user_course_progress_model
 from app.core import ai_service
-from app.schemas import course_schema
+from app.schemas.course import course_schema
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)

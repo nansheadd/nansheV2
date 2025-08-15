@@ -1,10 +1,10 @@
 # Fichier: backend/app/api/v2/endpoints/level_router.py (CORRIGÉ)
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.schemas import level_schema
+from app.schemas.course import level_schema
 from app.crud import level_crud
 from app.api.v2.dependencies import get_db, get_current_user
-from app.models.user_model import User
+from app.models.user.user_model import User
 
 router = APIRouter()
 

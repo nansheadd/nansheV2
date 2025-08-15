@@ -1,7 +1,9 @@
 # Fichier: backend/app/crud/level_crud.py (FINAL COMPLET)
 import logging
+from app.models.course import chapter_model
+from app.models.course import level_model
 from sqlalchemy.orm import Session, joinedload
-from app.models import level_model, chapter_model, user_course_progress_model
+from app.models.progress import user_course_progress_model
 from app.core.ai_service import generate_chapter_plan_for_level
 
 logger = logging.getLogger(__name__)

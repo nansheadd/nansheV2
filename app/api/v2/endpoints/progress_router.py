@@ -1,10 +1,10 @@
 # Fichier: backend/app/api/v2/endpoints/progress_router.py (FINAL)
 from fastapi import APIRouter, Depends, status, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas import progress_schema
+from app.schemas.progress import progress_schema
 from app.crud import progress_crud
 from app.api.v2.dependencies import get_db, get_current_user
-from app.models.user_model import User
+from app.models.user.user_model import User
 from pydantic import BaseModel
 from typing import List, Dict
 
