@@ -3,25 +3,41 @@ import logging
 from sqlalchemy.orm import Session, joinedload
 from app.models import chapter_model, knowledge_component_model, level_model
 from app.core.ai_service import generate_lesson_for_chapter, generate_exercises_for_lesson
+from app.services import language_chapter_generator
 
 logger = logging.getLogger(__name__)
 
 def get_chapter_details(db: Session, chapter_id: int):
     """
-    Récupère les détails d'un chapitre et ses composants de manière simple
-    pour éviter les problèmes de sous-requêtes complexes avec LIMIT.
+    Récupère les détails d'un chapitre en pré-chargeant les relations imbriquées.
     """
-    # ÉTAPE 1: On récupère JUSTE le chapitre et ses composants directs.
-    # On évite les `joinedload` complexes qui causent l'erreur.
     return db.query(chapter_model.Chapter).options(
         joinedload(chapter_model.Chapter.knowledge_components),
-        joinedload(chapter_model.Chapter.level) # On garde celui-ci pour le lien retour
+        # --- LIGNE MODIFIÉE ---
+        # On charge le niveau, ET le cours associé à ce niveau.
+        joinedload(chapter_model.Chapter.level).joinedload(level_model.Level.course)
     ).filter(
         chapter_model.Chapter.id == chapter_id
     ).first()
 
 # --- Les tâches de fond ne changent pas ---
 
+def generate_language_chapter_content_task(db: Session, chapter_id: int):
+    """
+    Tâche de fond qui orchestre la génération complète du contenu d'un chapitre de langue.
+    """
+    chapter = db.query(chapter_model.Chapter).options(
+        joinedload(chapter_model.Chapter.level).joinedload(level_model.Level.course)
+    ).filter(chapter_model.Chapter.id == chapter_id).first()
+    
+    if not chapter:
+        logger.error(f"Pipeline JIT annulée : chapitre {chapter_id} non trouvé.")
+        return
+    
+    # On passe le contexte du cours au service de génération
+    language_chapter_generator._generate_pedagogical_content(db, chapter)
+    
+    
 def generate_lesson_task(db: Session, chapter_id: int):
     """
     Tâche de fond pour générer le contenu d'une leçon pour un chapitre.
@@ -52,11 +68,14 @@ def generate_lesson_task(db: Session, chapter_id: int):
     
     db.commit()
 
+
 def generate_exercises_task(db: Session, chapter_id: int):
     """
     Tâche de fond pour générer les exercices d'un chapitre.
     """
     logger.info(f"Tâche de fond : Démarrage de la génération des exercices pour le chapitre {chapter_id}")
+    
+    # La requête existante récupère déjà le cours, c'est parfait.
     chapter = db.query(chapter_model.Chapter).options(
         joinedload(chapter_model.Chapter.level).joinedload(level_model.Level.course)
     ).filter(chapter_model.Chapter.id == chapter_id).first()
@@ -67,7 +86,18 @@ def generate_exercises_task(db: Session, chapter_id: int):
 
     try:
         model_choice = chapter.level.course.model_choice
-        exercises_data = generate_exercises_for_lesson(chapter.lesson_text, chapter.title, model_choice)
+        
+        # --- MODIFICATION CLÉ ---
+        # On récupère le type du cours parent et on le passe à la fonction de l'IA.
+        course_type = chapter.level.course.course_type
+        exercises_data = generate_exercises_for_lesson(
+            lesson_text=chapter.lesson_text, 
+            chapter_title=chapter.title, 
+            course_type=course_type, # <-- L'ajout crucial !
+            model_choice=model_choice
+        )
+        # --- FIN DE LA MODIFICATION ---
+
 
         if not exercises_data:
             raise ValueError("La génération des exercices a renvoyé une liste vide.")
@@ -91,3 +121,19 @@ def generate_exercises_task(db: Session, chapter_id: int):
         chapter.exercises_status = "failed"
     
     db.commit()
+
+
+def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_data: list):
+    """Sauvegarde les données des exercices générés en BDD."""
+    if not exercises_data:
+        raise ValueError("La génération des exercices a renvoyé une liste vide.")
+    for data in exercises_data:
+        component = knowledge_component_model.KnowledgeComponent(
+            chapter_id=chapter.id,
+            title=data.get("title", "Exercice sans titre"),
+            category=data.get("category", chapter.title),
+            component_type=data.get("component_type", "unknown"),
+            bloom_level=data.get("bloom_level", "remember"),
+            content_json=data.get("content_json", {})
+        )
+        db.add(component)

@@ -203,65 +203,24 @@ def add_message_to_discussion(db: Session, answer_log_id: int, user: user_model.
     return answer_log
 
 def process_user_answer(db: Session, user: user_model.User, answer_in: progress_schema.AnswerCreate, background_tasks):
+    """
+    Traite la soumission d'une réponse par un utilisateur, la corrige,
+    met à jour les statistiques et la progression.
+    """
     component = db.query(knowledge_component_model.KnowledgeComponent).options(
         joinedload(knowledge_component_model.KnowledgeComponent.chapter)
         .joinedload(chapter_model.Chapter.level)
     ).filter(knowledge_component_model.KnowledgeComponent.id == answer_in.component_id).first()
 
     if not component:
-        return {"status": "error", "feedback": "Composant d'exercice non trouvé."}
+        return {"status": "error", "feedback": "Composant d'exercice non trouvé.", "is_correct": False}
 
     component_type = component.component_type.lower()
     user_answer_json = answer_in.user_answer_json
     content_json = component.content_json
 
-    if component_type in ["qcm", "quiz", "fill_in_the_blank", "reorder"]:
-        is_correct = False
-        feedback = "Ce n'est pas tout à fait ça. Réessayez !"
-
-        if component_type == "qcm":
-            correct_index = content_json.get("correct_option_index")
-            is_correct = correct_index is not None and correct_index == user_answer_json.get("selected_option")
-        
-        elif component_type == "quiz":
-            user_answers = user_answer_json.get("answers", {})
-            questions = content_json.get("questions", [])
-            if not questions:
-                is_correct = False
-                feedback = "Le format de ce quiz est invalide."
-            else:
-                total_questions = len(questions)
-                correct_count = sum(1 for i, q in enumerate(questions) if q.get("answer") == user_answers.get(str(i)))
-                is_correct = correct_count == total_questions
-                feedback = f"Votre score : {correct_count}/{total_questions}. " + ("Parfait !" if is_correct else "Continuez vos efforts !")
-
-        elif component_type == "fill_in_the_blank":
-            correct_answers = [str(ans).lower().strip() for ans in content_json.get("answers", [])]
-            user_answers = [str(ua).lower().strip() for ua in user_answer_json.get("filled_blanks", [])]
-            is_correct = bool(correct_answers and user_answers and correct_answers == user_answers)
-
-        elif component_type == "reorder":
-            correct_order = content_json.get("correct_order", [])
-            user_order = user_answer_json.get("ordered_items", [])
-            is_correct = correct_order == user_order
-
-        status = "correct" if is_correct else "incorrect"
-        if is_correct:
-            feedback = "Bonne réponse ! Continuez comme ça."
-        
-        answer_log = user_answer_log_model.UserAnswerLog(
-            user_id=user.id, component_id=component.id, status=status,
-            user_answer_json=user_answer_json
-        )
-        db.add(answer_log)
-        
-        update_knowledge_strength(db, user, component, is_correct)
-        update_topic_performance(db, user, component, is_correct)
-        
-        db.commit()
-        return {"status": status, "feedback": feedback}
-
-    elif component_type in ["essai", "essay", "rédaction", "writing", "discussion"]:
+    # Cas 1 : Exercices nécessitant une analyse par l'IA (non auto-corrigés)
+    if component_type in ["essai", "essay", "rédaction", "writing", "discussion"]:
         answer_log = user_answer_log_model.UserAnswerLog(
             user_id=user.id, component_id=component.id, status="pending_review",
             user_answer_json=user_answer_json
@@ -270,11 +229,82 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
         db.commit()
         db.refresh(answer_log)
         background_tasks.add_task(analyze_complex_answer_task, db, answer_log.id)
-        return {"status": "pending_review", "feedback": "Votre réponse a été soumise pour analyse..."}
-    
+        return {"status": "pending_review", "feedback": "Votre réponse a été soumise pour analyse...", "is_correct": False}
+
+    # Cas 2 : Tous les autres exercices sont auto-corrigés
+    is_correct = False
+    feedback = "Ce n'est pas tout à fait ça. Réessayez !"
+
+    if component_type == "qcm":
+        correct_index = content_json.get("correct_option_index")
+        user_index = user_answer_json.get("selected_option")
+        
+        if correct_index is not None:
+            is_correct = (correct_index == user_index)
+        else:  # Plan B : si l'IA a fourni une réponse textuelle
+            correct_answer_text = content_json.get("correct_answer")
+            options = content_json.get("options", [])
+            if correct_answer_text and user_index is not None and user_index < len(options):
+                is_correct = (options[user_index] == correct_answer_text)
+
+    elif component_type == "fill_in_the_blank":
+        # Rend la correction flexible : accepte "answers": ["un"] ou "answer": "un"
+        correct_answers_list = content_json.get("answers", [content_json.get("answer")])
+        correct_answers = [str(ans).lower().strip() for ans in correct_answers_list if ans]
+        user_answers = [str(ua).lower().strip() for ua in user_answer_json.get("filled_blanks", [])]
+        is_correct = bool(correct_answers and user_answers and correct_answers == user_answers)
+
+    elif component_type in ["reorder", "sentence_construction"]:
+        correct_order = content_json.get("correct_order", [])
+        user_order = user_answer_json.get("ordered_items", [])
+        is_correct = bool(correct_order and user_order and correct_order == user_order)
+
+    elif component_type == "character_recognition":
+        is_correct = user_answer_json.get("completed_all", False)
+
+    elif component_type == "association_drag_drop":
+        correct_pairs = {f"prompt-{i}": pair['answer'] for i, pair in enumerate(content_json.get("pairs", []))}
+        user_associations = user_answer_json.get("associations", {})
+        is_correct = len(correct_pairs) > 0 and correct_pairs == user_associations
+        
+    elif component_type == "quiz":
+        user_answers = user_answer_json.get("answers", {})
+        questions = content_json.get("questions", [])
+        if questions:
+            total_questions = len(questions)
+            correct_count = sum(1 for i, q in enumerate(questions) if str(q.get("answer")) == str(user_answers.get(str(i))))
+            is_correct = (correct_count == total_questions)
+            feedback = f"Votre score : {correct_count}/{total_questions}. " + ("Parfait !" if is_correct else "Continuez vos efforts !")
+        else:
+            feedback = "Le format de ce quiz est invalide."
+            
     else:
-        return {"status": "error", "feedback": f"Type d'exercice '{component.component_type}' non géré."}
+        return {"status": "error", "feedback": f"Type d'exercice '{component.component_type}' non géré.", "is_correct": False}
+
+    # --- Logique commune de sauvegarde et de mise à jour de la progression ---
+    status = "correct" if is_correct else "incorrect"
+    if is_correct:
+        feedback = "Bonne réponse ! Continuez comme ça."
     
+    answer_log = user_answer_log_model.UserAnswerLog(
+        user_id=user.id, 
+        component_id=component.id, 
+        status=status,
+        user_answer_json=user_answer_json
+    )
+    db.add(answer_log)
+    
+    update_knowledge_strength(db, user, component, is_correct)
+    update_topic_performance(db, user, component, is_correct)
+    
+    # Si la réponse est correcte, on vérifie si cela complète le chapitre
+    if is_correct:
+        check_and_advance_progress_if_chapter_complete(db, user, component)
+
+    db.commit()
+    
+    return {"status": status, "feedback": feedback, "is_correct": is_correct}
+
 
 def reset_user_answers_for_chapter(db: Session, user_id: int, chapter_id: int):
     """

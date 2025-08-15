@@ -1,4 +1,6 @@
 # Fichier: backend/app/api/v2/endpoints/chapter_router.py (ARCHITECTURE FINALE)
+
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
@@ -9,15 +11,32 @@ from app.models import chapter_model, user_model, user_answer_log_model
 
 router = APIRouter()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @router.get("/{chapter_id}", response_model=chapter_schema.Chapter)
 def read_chapter_details(
     chapter_id: int, 
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db), 
     current_user: user_model.User = Depends(get_current_user)
 ):
     chapter = chapter_crud.get_chapter_details(db, chapter_id=chapter_id)
     if not chapter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
+    
+    is_language_course = chapter.level.course.course_type == 'langue'
+    is_content_pending = chapter.lesson_status == "pending"
+    if is_language_course and is_content_pending:
+        logger.info(f"Déclenchement de la pipeline JIT pour le chapitre de langue {chapter.id}")
+        # On met à jour les statuts pour que le frontend affiche un chargement
+        chapter.lesson_status = "generating"
+        chapter.exercises_status = "generating"
+        db.commit()
+        
+        # On lance la tâche de fond qui va tout générer
+        background_tasks.add_task(chapter_crud.generate_language_chapter_content_task, db, chapter_id)
+        
 
     component_ids = [comp.id for comp in chapter.knowledge_components]
     if not component_ids: return chapter

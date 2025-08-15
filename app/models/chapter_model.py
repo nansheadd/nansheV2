@@ -7,6 +7,8 @@ from typing import List, TYPE_CHECKING
 if TYPE_CHECKING:
     from .level_model import Level
     from .knowledge_component_model import KnowledgeComponent
+    from .vocabulary_item_model import VocabularyItem
+    from .grammar_rule_model import GrammarRule 
 
 class Chapter(Base):
     __tablename__ = "chapters"
@@ -25,3 +27,6 @@ class Chapter(Base):
     level_id: Mapped[int] = mapped_column(Integer, ForeignKey("levels.id"))
     level: Mapped["Level"] = relationship(back_populates="chapters")
     knowledge_components: Mapped[List["KnowledgeComponent"]] = relationship(back_populates="chapter")
+
+    vocabulary_items: Mapped[List["VocabularyItem"]] = relationship(back_populates="chapter")
+    grammar_rules: Mapped[List["GrammarRule"]] = relationship(back_populates="chapter")

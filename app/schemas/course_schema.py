@@ -1,7 +1,9 @@
 # Fichier: backend/app/schemas/course_schema.py (VERSION FINALE)
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from .level_schema import Level 
+from .character_schema import CharacterSet 
+
+
 
 class CourseBase(BaseModel):
     """Contient les champs partagés."""
@@ -18,6 +20,12 @@ class CourseCreate(BaseModel):
     title: str
     model_choice: str = "gemini" # 'gemini' est la valeur par défaut
 
+
+class CourseInfo(BaseModel):
+    course_type: str
+    class Config:
+        from_attributes = True
+
 class Course(CourseBase):
     """Ce que le backend renvoie."""
     id: int
@@ -25,8 +33,12 @@ class Course(CourseBase):
     learning_plan_json: Optional[Dict[str, Any]] = None
     levels: List['Level'] = [] 
     generation_status: str
+    character_sets: List[CharacterSet] = []
+
+    levels: List['Level'] = []
 
     class Config:
         from_attributes = True
 
+from .level_schema import Level
 Course.model_rebuild()

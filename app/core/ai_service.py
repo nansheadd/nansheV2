@@ -235,46 +235,71 @@ def generate_lesson_for_chapter(chapter_title: str, model_choice: str) -> str:
         logger.error(f"Erreur de génération de leçon pour '{chapter_title}': {e}")
         return ""
 
-def generate_exercises_for_lesson(lesson_text: str, chapter_title: str, model_choice: str) -> List[Dict[str, Any]]:
+def generate_exercises_for_lesson(lesson_text: str, chapter_title: str, course_type: str, model_choice: str) -> List[Dict[str, Any]]:
     """
-    Génère des exercices avec un prompt très strict pour garantir le formatage du content_json.
+    Génère des exercices adaptés, avec des types spécifiques si la catégorie est 'langue'.
     """
-    logger.info(f"Génération des exercices pour le chapitre '{chapter_title}'")
+    logger.info(f"Génération des exercices pour le chapitre '{chapter_title}' (Type: {course_type})")
     
-    # --- PROMPT SYSTÈME AMÉLIORÉ ET ULTRA-PRÉCIS ---
+    # On définit une base de types d'exercices
+    exercise_types = ["qcm", "fill_in_the_blank", "discussion"]
+    
+    # --- NOUVEAU BLOC LOGIQUE ---
+    # Si le cours est une langue, on ajoute des exercices spécialisés
+    if course_type == 'langue':
+        exercise_types.extend([
+            "character_recognition", # Pour les alphabets/kanas
+            "association_drag_drop", # Pour le vocabulaire
+            "sentence_construction"  # Pour la grammaire
+        ])
+    # ---------------------------
+
+    # Le prompt système est maintenant dynamique et plus intelligent.
     system_prompt = f"""
-    Tu es un créateur d'exercices pédagogiques expert. Crée 3 exercices variés et pertinents basés UNIQUEMENT sur le texte de la leçon fourni.
-    Tu DOIS répondre avec un objet JSON contenant une seule clé "exercises", qui est une liste de 3 objets.
+    Tu es un créateur d'exercices pédagogiques expert pour un cours de type '{course_type}'. Crée 3 exercices variés basés sur la leçon fournie.
+    Tu DOIS répondre avec un JSON contenant une clé "exercises", qui est une liste de 3 objets.
 
-    Chaque objet exercice dans la liste DOIT avoir la structure suivante :
-    1. "title": un titre clair et concis.
+    Chaque objet exercice DOIT avoir la structure suivante :
+    1. "title": un titre clair.
     2. "category": la valeur DOIT être exactement: "{chapter_title}".
-    3. "component_type": DOIT être choisi parmi ["qcm", "fill_in_the_blank", "discussion"].
-    4. "bloom_level": une valeur comme "remember", "apply", "evaluate".
-    5. "content_json": un objet JSON qui DOIT être rempli selon le `component_type`. C'est obligatoire.
+    3. "component_type": DOIT être choisi parmi {json.dumps(exercise_types)}.
+    4. "bloom_level": une valeur comme "remember", "apply".
+    5. "content_json": un objet JSON qui DOIT être rempli selon le `component_type`.
 
-    Voici les formats obligatoires pour `content_json` pour chaque type :
+    Voici les formats obligatoires pour `content_json` :
     
-    - Si `component_type` est "qcm":
+    - Si `component_type` est "qcm", "fill_in_the_blank", ou "discussion":
+      (les formats existants ne changent pas...)
+
+    // --- NOUVELLES INSTRUCTIONS POUR L'IA ---
+    - Si `component_type` est "character_recognition":
       {{
-        "question": "Le texte de la question ici.",
-        "options": ["Option 1", "Option 2", "Option 3"],
-        "correct_option_index": 2 
+        "instruction": "Quel est le son de ce caractère ?",
+        "characters": [
+            {{ "char": "あ", "answer": "a" }},
+            {{ "char": "い", "answer": "i" }},
+            {{ "char": "う", "answer": "u" }}
+        ]
       }}
 
-    - Si `component_type` est "fill_in_the_blank":
+    - Si `component_type` est "association_drag_drop":
       {{
-        "sentence": "Le marxisme est une théorie ___ développée au XIXe siècle.",
-        "answers": ["sociale, économique et politique"]
+        "instruction": "Associe chaque mot à sa traduction.",
+        "pairs": [
+            {{ "prompt": "猫", "answer": "Chat" }},
+            {{ "prompt": "犬", "answer": "Chien" }}
+        ]
       }}
 
-    - Si `component_type` est "discussion":
+    - Si `component_type` est "sentence_construction":
       {{
-        "prompt": "Comment la théorie de la plus-value explique-t-elle l'exploitation dans le système capitaliste selon Marx ?",
-        "guidelines": "Pensez à la différence entre la valeur du travail et le salaire."
+        "instruction": "Remets les mots dans le bon ordre.",
+        "scrambled": ["私", "は", "学生", "です"],
+        "correct_order": ["私", "は", "学生", "です"]
       }}
-      
-    Assure-toi que chaque `content_json` est complet et non vide.
+    // --- FIN DES NOUVELLES INSTRUCTIONS ---
+    
+    Assure-toi que chaque `content_json` est complet et pertinent pour un cours de '{course_type}'.
     """
     user_prompt = lesson_text
     try:
@@ -354,3 +379,53 @@ def continue_ai_discussion(prompt: str, history: List[Dict[str, str]], user_mess
     except Exception as e:
         logger.error(f"Erreur lors de la continuation de la discussion: {e}")
         return {"response_text": "Je rencontre un problème technique.", "is_complete": False}
+
+
+# ==============================================================================
+# --- NOUVELLE SECTION : Fonctions Pédagogiques Spécifiques aux Langues ---
+# ==============================================================================
+
+def generate_language_pedagogical_content(course_title: str, chapter_title: str, model_choice: str) -> Dict[str, Any]:
+    """
+    Génère les briques pédagogiques en tenant compte de la langue du cours.
+    """
+    logger.info(f"IA Service: Génération du contenu pédagogique pour '{chapter_title}' (Cours: {course_title})")
+    system_prompt = f"""
+    Tu es un professeur de langue expert créant du matériel pour un cours de '{course_title}'.
+    Le chapitre actuel est intitulé '{chapter_title}'.
+    Ton objectif est de générer les briques de savoir fondamentales pour ce chapitre.
+    Tu DOIS répondre avec un JSON ayant la structure :
+    {{
+      "vocabulary": [ {{ "term": "...", "translation": "...", "pronunciation": "...", "example_sentence": "..." }} ],
+      "grammar": [ {{ "rule_name": "...", "explanation": "...", "example_sentence": "..." }} ]
+    }}
+    Génère 8 à 12 mots de vocabulaire et 1 à 2 règles de grammaire, tous directement liés au thème '{chapter_title}' dans le contexte de l'apprentissage du '{course_title}'.
+    """
+    user_prompt = f"Génère le contenu pour le chapitre '{chapter_title}' du cours '{course_title}'."
+    try:
+        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
+        return json.loads(response_str)
+    except Exception as e:
+        logger.error(f"Erreur de génération de contenu pédagogique pour '{chapter_title}': {e}")
+        return {"vocabulary": [], "grammar": []}
+
+def generate_language_dialogue(course_title: str, chapter_title: str, vocabulary: list, grammar: list, model_choice: str) -> str:
+    """
+    Génère un dialogue dans la langue du cours en utilisant le matériel fourni.
+    """
+    logger.info(f"IA Service: Génération du dialogue pour '{chapter_title}' (Cours: {course_title})")
+    vocab_str = ", ".join([f"'{item['term']}' ({item['translation']})" for item in vocabulary])
+    grammar_str = " et ".join([f"'{rule['rule_name']}'" for rule in grammar])
+    system_prompt = f"""
+    Tu es un scénariste pédagogique pour un cours de '{course_title}'. Ta mission est d'écrire un dialogue court et naturel pour le chapitre '{chapter_title}'.
+    CONTRAINTES STRICTES : Le dialogue doit être écrit en '{course_title}' et utiliser principalement le vocabulaire ({vocab_str}) et la grammaire ({grammar_str}) fournis.
+    Tu DOIS répondre avec un JSON contenant une seule clé "dialogue".
+    """
+    user_prompt = "Écris le dialogue maintenant."
+    try:
+        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
+        return json.loads(response_str).get("dialogue", "Erreur: Le dialogue n'a pas pu être généré.")
+    except Exception as e:
+        logger.error(f"Erreur de génération de dialogue pour '{chapter_title}': {e}")
+        return "Le dialogue n'a pas pu être généré en raison d'une erreur technique."
+    

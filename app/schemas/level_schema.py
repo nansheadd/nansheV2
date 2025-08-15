@@ -1,29 +1,29 @@
-# Fichier: backend/app/schemas/level_schema.py (CORRIGÉ)
+# Fichier à modifier : nanshe/backend/app/schemas/level_schema.py
+
 from pydantic import BaseModel
 from typing import List
-# On importe le schéma Chapter pour la relation
-from .chapter_schema import Chapter
+from .course_schema import CourseInfo
+# On retire l'import de Chapter car on va aussi utiliser une référence anticipée
+
+class CourseInfo(BaseModel):
+    course_type: str
+    class Config:
+        from_attributes = True
 
 class Level(BaseModel):
-    """
-    Schéma pour renvoyer les données d'un niveau, incluant sa liste de chapitres.
-    """
     id: int
     title: str
     level_order: int
-    
-    # --- CORRECTION ICI ---
-    # On utilise le nom de champ correct du modèle SQLAlchemy
     are_chapters_generated: bool
-    # --- FIN DE LA CORRECTION ---
     course_id: int
-    
-    # On utilise une référence anticipée pour éviter les imports circulaires
-    chapters: List['Chapter'] = []
+    course: CourseInfo
+    chapters: List['Chapter'] = [] # On utilise une référence anticipée
     is_accessible: bool = False
 
     class Config:
         from_attributes = True
 
-# On dit à Pydantic de résoudre les références anticipées
+
+# --- AJOUT CRUCIAL ---
+from .chapter_schema import Chapter
 Level.model_rebuild()

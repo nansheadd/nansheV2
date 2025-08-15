@@ -4,6 +4,7 @@ from sqlalchemy import not_, select
 from app.models import course_model, user_model, user_course_progress_model, level_model
 from app.schemas import course_schema
 from app.core.ai_service import generate_learning_plan, classify_course_topic
+from app.services.language_course_generator import LanguageCourseGenerator
 from app.services.course_generator import CourseGenerator # <-- IMPORTER LE NOUVEAU SERVICE
 import logging
 
@@ -11,16 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 def create_course_shell(db: Session, course_in: course_schema.CourseCreate, creator: user_model.User) -> course_model.Course:
-    """
-    Crée de manière SYNCHRONE la coquille vide d'un cours.
-    Cette fonction est appelée directement par le routeur pour obtenir un ID.
-    """
+    # Cette fonction ne change pas
     logger.info(f"Création de la coquille pour le cours '{course_in.title}' pour l'utilisateur {creator.id}")
     db_course = course_model.Course(
         title=course_in.title,
         model_choice=course_in.model_choice,
-        generation_status="pending", # Le statut initial est "en attente"
-        course_type="unknown"
+        generation_status="pending",
+        course_type="unknown" # Le type sera déterminé dans la tâche de fond
     )
     db.add(db_course)
     db.commit()
@@ -30,52 +28,72 @@ def create_course_shell(db: Session, course_in: course_schema.CourseCreate, crea
 # TÂCHE DE FOND RENOMMÉE
 def generate_course_plan_task(db: Session, course_id: int, creator_id: int):
     """
-    Tâche de fond ASYNCHRONE pour générer UNIQUEMENT le plan initial (niveaux).
+    Tâche de fond qui classifie le cours, puis appelle le générateur approprié.
     """
-    logger.info(f"Tâche de fond JIT : Démarrage du plan pour le cours ID: {course_id}")
+    logger.info(f"Tâche de fond : Démarrage de la planification pour le cours ID: {course_id}")
     db_course = db.get(course_model.Course, course_id)
     if not db_course:
-        logger.error(f"Tâche JIT annulée : cours {course_id} non trouvé.")
+        logger.error(f"Tâche annulée : cours {course_id} non trouvé.")
         return
 
     try:
         db_course.generation_status = "generating"
         db.commit()
 
+        # Étape 1 : Classifier le sujet pour décider de la route à prendre
         course_type = classify_course_topic(title=db_course.title, model_choice=db_course.model_choice)
-        learning_plan = generate_learning_plan(
-            title=db_course.title, course_type=course_type, model_choice=db_course.model_choice
-        )
-        db_course.description = learning_plan.get("overview", f"Un cours sur {db_course.title}")
         db_course.course_type = course_type
-        db_course.learning_plan_json = learning_plan
-        
-        levels_data = learning_plan.get("levels", [])
-        for i, level_data in enumerate(levels_data):
-            db_level = level_model.Level(
-                course_id=db_course.id,
-                title=level_data.get("level_title", f"Niveau {i+1}"),
-                level_order=i,
-                are_chapters_generated=False
-            )
-            db.add(db_level)
-
-        creator_progress = user_course_progress_model.UserCourseProgress(
-            user_id=creator_id, course_id=db_course.id, current_level_order=0
-        )
-        db.add(creator_progress)
-
-        db_course.generation_status = "completed"
         db.commit()
-        logger.info(f"Tâche de fond JIT : Plan du cours ID: {course_id} terminé.")
+        
+        creator = db.get(user_model.User, creator_id)
+        course_in = course_schema.CourseCreate(title=db_course.title, model_choice=db_course.model_choice)
+
+        # Étape 2 : Aiguillage vers le bon générateur
+        if course_type == 'langue':
+            logger.info(f"Cours de langue détecté. Utilisation de LanguageCourseGenerator pour le cours ID: {course_id}")
+            lang_generator = LanguageCourseGenerator(db=db, course_in=course_in, creator=creator)
+            # Cette méthode s'occupe de tout l'échafaudage pour les langues
+            lang_generator.generate_full_course_scaffold()
+        else:
+            logger.info(f"Cours standard détecté. Utilisation du générateur générique pour le cours ID: {course_id}")
+            # On utilise l'ancienne logique pour les autres types de cours
+            generate_generic_course_plan(db, db_course, creator)
 
     except Exception as e:
-        logger.error(f"Erreur lors de la génération du plan JIT pour le cours ID {course_id}: {e}", exc_info=True)
+        logger.error(f"Erreur majeure lors de la génération du plan pour le cours ID {course_id}: {e}", exc_info=True)
         db.rollback()
         db_course_to_fail = db.get(course_model.Course, course_id)
         if db_course_to_fail:
             db_course_to_fail.generation_status = "failed"
             db.commit()
+
+
+def generate_generic_course_plan(db: Session, db_course: course_model.Course, creator: user_model.User):
+    """
+    Contient l'ancienne logique de génération de plan pour les cours non linguistiques.
+    """
+    learning_plan = generate_learning_plan(
+        title=db_course.title, course_type=db_course.course_type, model_choice=db_course.model_choice
+    )
+    db_course.description = learning_plan.get("overview", f"Un cours sur {db_course.title}")
+    db_course.learning_plan_json = learning_plan
+    
+    levels_data = learning_plan.get("levels", [])
+    for i, level_data in enumerate(levels_data):
+        db_level = level_model.Level(
+            course_id=db_course.id,
+            title=level_data.get("level_title", f"Niveau {i+1}"),
+            level_order=i,
+            are_chapters_generated=False # Le contenu sera généré en JIT
+        )
+        db.add(db_level)
+
+    creator_progress = user_course_progress_model.UserCourseProgress(
+        user_id=creator.id, course_id=db_course.id, current_level_order=0
+    )
+    db.add(creator_progress)
+    db_course.generation_status = "completed"
+    db.commit()
 
 def generate_course_content_task(db: Session, course_id: int, creator_id: int):
     """

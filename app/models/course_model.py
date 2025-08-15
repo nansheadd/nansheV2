@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from .user_course_progress_model import UserCourseProgress
     from .level_model import Level
+    from .character_model import CharacterSet
 
 class Course(Base):
     """
@@ -32,6 +33,7 @@ class Course(Base):
     # --- Relations ---
     progressions: Mapped[List["UserCourseProgress"]] = relationship(back_populates="course")
     levels: Mapped[List["Level"]] = relationship(back_populates="course")
+    character_sets: Mapped[List["CharacterSet"]] = relationship(back_populates="course")
 
     def __repr__(self):
         return f"<Course(id={self.id}, title='{self.title}')>"
