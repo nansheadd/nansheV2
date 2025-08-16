@@ -6,8 +6,8 @@ from typing import List, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .chapter_model import Chapter
-    from ..user_knowledge_strength_model import UserKnowledgeStrength
-    from ..user_answer_log_model import UserAnswerLog
+    from ..progress.user_knowledge_strength_model import UserKnowledgeStrength
+    from ..progress.user_answer_log_model import UserAnswerLog
 
 class KnowledgeComponent(Base):
     __tablename__ = "knowledge_components"

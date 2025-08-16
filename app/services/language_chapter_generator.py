@@ -1,5 +1,6 @@
 # Fichier : app/services/language_chapter_generator.py
 
+import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,6 +19,17 @@ _PRON_KEYS = (
     "ipa", "pinyin", "romaji", "jyutping", "wylie", "buckwalter",
     "phonetic", "phonetics", "pron"
 )
+
+def _update_chapter_progress(db: Session, chapter: chapter_model.Chapter, step: str, progress: int):
+    """Met à jour la progression de la génération pour un chapitre."""
+    db_chapter = db.get(chapter_model.Chapter, chapter.id)
+    if db_chapter:
+        db_chapter.generation_step = step
+        db_chapter.generation_progress = progress
+        db.commit()
+        logger.info(f"  -> Progress Update (Chapter ID {chapter.id}): {progress}% - {step}")
+        time.sleep(0.5) # Laisse le temps au frontend de rafraîchir
+
 
 def _norm_str(x: Any) -> Optional[str]:
     if x is None:
@@ -136,44 +148,45 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
     """ Pipeline JIT complète pour générer tout le contenu d'un chapitre de langue. """
     try:
         logger.info(f"Pipeline JIT (Langue) : Démarrage pour le chapitre '{chapter.title}'")
+        _update_chapter_progress(db, chapter, "Analyse du chapitre...", 5)
         course = chapter.level.course
 
         # ÉTAPE 1: Vocabulaire & Grammaire
+        _update_chapter_progress(db, chapter, "Génération du vocabulaire...", 10)
         pedagogical_content = ai_service.generate_language_pedagogical_content(
-            course_title=course.title,
-            chapter_title=chapter.title,
-            model_choice=course.model_choice
+            course_title=course.title, chapter_title=chapter.title, model_choice=course.model_choice
         )
         vocab_items = _save_vocabulary(db, chapter.id, pedagogical_content.get("vocabulary", []))
+        _update_chapter_progress(db, chapter, "Génération des points de grammaire...", 30)
         grammar_rules = _save_grammar(db, chapter.id, pedagogical_content.get("grammar", []))
         logger.info(" -> Étape 1/3 : Vocabulaire et grammaire générés.")
 
         # ÉTAPE 2: Dialogue Contextuel
+        _update_chapter_progress(db, chapter, "Création du dialogue...", 50)
         dialogue_text = ai_service.generate_language_dialogue(
-            course_title=course.title,
-            chapter_title=chapter.title,
-            vocabulary=vocab_items,   # on renvoie les items IA (ids/terms) à l'IA, pas la forme DB
-            grammar=grammar_rules,
-            model_choice=course.model_choice
+            course_title=course.title, chapter_title=chapter.title, vocabulary=vocab_items,
+            grammar=grammar_rules, model_choice=course.model_choice
         )
         chapter.lesson_text = dialogue_text
+        _update_chapter_progress(db, chapter, "Dialogue terminé.", 70)
         chapter.lesson_status = "completed"
         logger.info(" -> Étape 2/3 : Dialogue contextuel généré.")
 
         # ÉTAPE 3: Exercices Ciblés
+        _update_chapter_progress(db, chapter, "Préparation des exercices pratiques...", 80)
         exercises_data = ai_service.generate_exercises_for_lesson(
-            lesson_text=dialogue_text,
-            chapter_title=chapter.title,
-            course_type='langue',
-            model_choice=course.model_choice
+            lesson_text=dialogue_text, chapter_title=chapter.title,
+            course_type='langue', model_choice=course.model_choice
         )
         _save_exercises_data(db, chapter, exercises_data)
         chapter.exercises_status = "completed"
+        _update_chapter_progress(db, chapter, "Finalisation...", 100)
         logger.info(" -> Étape 3/3 : Exercices ciblés générés.")
 
         db.commit()
         logger.info(f"Pipeline JIT (Langue) : SUCCÈS pour le chapitre {chapter.id}")
 
+         
     except Exception as e:
         # sécurise l'accès à l'id + rollback AVANT tout autre accès DB
         chap_id = getattr(chapter, "id", None)

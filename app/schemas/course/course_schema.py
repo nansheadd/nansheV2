@@ -35,6 +35,11 @@ class Course(CourseBase):
     generation_status: str
     character_sets: List[CharacterSet] = []
 
+    # --- NOUVEAUX CHAMPS ---
+    generation_step: Optional[str] = None
+    generation_progress: Optional[int] = None
+    # ----------------------
+
     levels: List['Level'] = []
 
     class Config:

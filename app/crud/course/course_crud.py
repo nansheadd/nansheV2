@@ -4,6 +4,7 @@ from app.models.course import course_model
 from app.models.course import level_model
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import not_, select
+from app.db.session import SessionLocal
 from app.models.progress import user_course_progress_model
 from app.schemas.course import course_schema
 from app.core.ai_service import generate_learning_plan, classify_course_topic
@@ -29,49 +30,51 @@ def create_course_shell(db: Session, course_in: course_schema.CourseCreate, crea
     return db_course
 
 # TÂCHE DE FOND RENOMMÉE
-def generate_course_plan_task(db: Session, course_id: int, creator_id: int):
+def generate_course_plan_task(course_id: int, creator_id: int): # <-- 2. RETIRER le paramètre db: Session
     """
     Tâche de fond qui classifie le cours, puis appelle le générateur approprié.
+    Elle gère sa propre session de base de données.
     """
-    logger.info(f"Tâche de fond : Démarrage de la planification pour le cours ID: {course_id}")
-    db_course = db.get(course_model.Course, course_id)
-    if not db_course:
-        logger.error(f"Tâche annulée : cours {course_id} non trouvé.")
-        return
-
+    # 3. CRÉER une nouvelle session de BDD propre à cette tâche
+    db = SessionLocal()
     try:
+        logger.info(f"Tâche de fond : Démarrage de la planification pour le cours ID: {course_id}")
+        db_course = db.get(course_model.Course, course_id)
+        if not db_course:
+            logger.error(f"Tâche annulée : cours {course_id} non trouvé.")
+            return
+
+        # Le reste de la logique reste identique, mais utilise la session 'db' locale
         db_course.generation_status = "generating"
         db.commit()
 
-        # Étape 1 : Classifier le sujet pour décider de la route à prendre
         course_type = classify_course_topic(title=db_course.title, model_choice=db_course.model_choice)
         db_course.course_type = course_type
         db.commit()
         
         creator = db.get(user_model.User, creator_id)
-        course_in = course_schema.CourseCreate(title=db_course.title, model_choice=db_course.model_choice)
 
-        # Étape 2 : Aiguillage vers le bon générateur
-        
         if course_type == 'langue':
             logger.info(f"Cours de langue détecté. Utilisation de LanguageCourseGenerator pour le cours ID: {course_id}")
-            # --- CORRECTION DE L'APPEL ---
-            # On passe l'objet db_course directement, on ne crée plus de course_in
             lang_generator = LanguageCourseGenerator(db=db, db_course=db_course, creator=creator)
             lang_generator.generate_full_course_scaffold()
         else:
             logger.info(f"Cours standard détecté. Utilisation du générateur générique pour le cours ID: {course_id}")
-            # On utilise l'ancienne logique pour les autres types de cours
             generate_generic_course_plan(db, db_course, creator)
 
     except Exception as e:
         logger.error(f"Erreur majeure lors de la génération du plan pour le cours ID {course_id}: {e}", exc_info=True)
         db.rollback()
+        # On doit re-récupérer l'objet dans la session en cas d'erreur avant de le modifier
         db_course_to_fail = db.get(course_model.Course, course_id)
         if db_course_to_fail:
             db_course_to_fail.generation_status = "failed"
+            db_course_to_fail.generation_step = "Une erreur est survenue"
+            db_course_to_fail.generation_progress = 0
             db.commit()
-
+    finally:
+        # 4. S'ASSURER de toujours fermer la session à la fin
+        db.close()
 
 def generate_generic_course_plan(db: Session, db_course: course_model.Course, creator: user_model.User):
     """

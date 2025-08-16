@@ -2,7 +2,7 @@
 from sqlalchemy import Integer, String, Boolean, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .level_model import Level
@@ -23,6 +23,11 @@ class Chapter(Base):
     lesson_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     exercises_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     # ------------------------------------
+
+    # --- NOUVEAUX CHAMPS POUR LE SUIVI DE GÉNÉRATION JIT ---
+    generation_step: Mapped[Optional[str]] = mapped_column(String(255))
+    generation_progress: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    # ---------------------------------------------------------
 
     level_id: Mapped[int] = mapped_column(Integer, ForeignKey("levels.id"))
     level: Mapped["Level"] = relationship(back_populates="chapters")

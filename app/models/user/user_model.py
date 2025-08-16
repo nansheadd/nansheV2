@@ -7,9 +7,9 @@ from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from .user_course_progress_model import UserCourseProgress
-    from .user_knowledge_strength_model import UserKnowledgeStrength
-    from .user_answer_log_model import UserAnswerLog
+    from ..progress.user_course_progress_model import UserCourseProgress
+    from ..progress.user_knowledge_strength_model import UserKnowledgeStrength
+    from ..progress.user_answer_log_model import UserAnswerLog
 
 class User(Base):
     """

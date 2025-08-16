@@ -1,6 +1,7 @@
 # Fichier : nanshe/backend/app/services/language_course_generator.py (VERSION REFACTORISÉE)
 import json
 import logging
+import time
 from sqlalchemy.orm import Session
 
 # On utilise les nouveaux chemins d'importation
@@ -20,6 +21,23 @@ _PRON_KEYS = (
 )
 
 logger = logging.getLogger(__name__)
+
+def _update_progress(db: Session, course: course_model.Course, step: str, progress: int):
+    """Met à jour la progression de manière fiable et attend un court instant."""
+    # On s'assure de modifier l'objet que la session suit activement
+    db_course = db.get(course_model.Course, course.id)
+    if db_course:
+        db_course.generation_step = step
+        db_course.generation_progress = progress
+        db.commit()
+        logger.info(f"  -> Progress Update (Course ID {course.id}): {progress}% - {step}")
+        # Petite pause pour laisser le temps au frontend de rafraîchir,
+        # rendant les étapes rapides visibles.
+        time.sleep(0.5)
+    else:
+        logger.error(f"  -> FAILED Progress Update (Course ID {course.id}): Course not found in session.")
+
+
 
 
 def _extras_without(skip: set, src: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -107,25 +125,25 @@ class LanguageCourseGenerator:
         self.creator = creator
 
     def generate_full_course_scaffold(self):
-        """
-        Méthode principale qui génère l'ÉCHAFAUDAGE du cours.
-        """
         try:
             logger.info(f"Génération de l'échafaudage pour le cours de langue '{self.db_course.title}' (ID: {self.db_course.id})")
             
-            # On ne crée plus d'entrée, on la met à jour
             self.db_course.generation_status = "generating"
-            self.db.commit()
+            _update_progress(self.db, self.db_course, "Initialisation...", 5)
 
-            # Les étapes de génération restent les mêmes
+            _update_progress(self.db, self.db_course, "Génération du plan de cours...", 10)
             course_plan = self._generate_full_course_plan()
+            _update_progress(self.db, self.db_course, "Sauvegarde du plan...", 30)
             self._apply_full_course_plan(course_plan)
             
+            _update_progress(self.db, self.db_course, "Génération des alphabets...", 60)
             character_sets = self._generate_character_sets()
+            _update_progress(self.db, self.db_course, "Sauvegarde des alphabets...", 80)
             self._save_character_sets(character_sets)
 
-            # Finalisation
+            _update_progress(self.db, self.db_course, "Finalisation...", 95)
             self.db_course.generation_status = "completed"
+            self.db_course.generation_progress = 100
             self.db.commit()
             
             self._enroll_creator()
@@ -139,6 +157,8 @@ class LanguageCourseGenerator:
             if self.db_course:
                 self.db.rollback()
                 self.db_course.generation_status = "failed"
+                self.db_course.generation_progress = 0
+                self.db_course.generation_step = "Une erreur est survenue"
                 self.db.commit()
             return None
     

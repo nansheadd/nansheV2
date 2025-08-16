@@ -7,8 +7,8 @@ from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from .user_model import User
-    from .knowledge_component_model import KnowledgeComponent
+    from ..user.user_model import User
+    from ..course.knowledge_component_model import KnowledgeComponent
 
 class UserKnowledgeStrength(Base):
     """

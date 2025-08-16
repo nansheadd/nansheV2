@@ -12,7 +12,7 @@ class LevelForChapter(BaseModel):
     course: CourseInfo # On imbrique le schéma léger du cours
     class Config:
         from_attributes = True
-
+        
 class Chapter(BaseModel):
     id: int
     title: str
@@ -21,14 +21,16 @@ class Chapter(BaseModel):
     knowledge_components: List[KnowledgeComponent] = []
     is_accessible: bool = False 
 
-    # --- NOUVEAUX CHAMPS ---
     lesson_status: str
     exercises_status: str
     vocabulary_items: List[VocabularyItem] = []
     grammar_rules: List[GrammarRule] = []
+    
+    # --- NOUVEAUX CHAMPS ---
+    generation_step: Optional[str] = None
+    generation_progress: Optional[int] = None
     # ----------------------
     
-    # On ajoute le level_id pour pouvoir remonter dans la navigation du frontend
     level: LevelForChapter
 
     class Config:

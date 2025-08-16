@@ -4,6 +4,10 @@ from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 from app.schemas.progress import personalization_schema
+from app.schemas.course import vocabulary_schema
+from app.models.course.vocabulary_item_model import VocabularyItem
+from app.models.course.chapter_model import Chapter
+from app.models.course.level_model import Level
 from app.core import ai_service
 from app.crud.course import course_crud
 from app.api.v2.dependencies import get_db, get_current_user
@@ -12,6 +16,8 @@ from app.models.user.user_model import User
 router = APIRouter()
 
 # Fichier: backend/app/api/v2/endpoints/course_router.py (partiel)
+
+
 
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(
@@ -29,8 +35,7 @@ def create_new_course(
     
     # ÉTAPE 2 : On lance la tâche de fond avec l'ID que nous avons maintenant.
     background_tasks.add_task(
-        course_crud.generate_course_plan_task, # On renomme la tâche pour plus de clarté
-        db=db,
+        course_crud.generate_course_plan_task,
         course_id=course.id,
         creator_id=current_user.id
     )
@@ -112,3 +117,16 @@ def unenroll_from_course(
     if not success:
         raise HTTPException(status_code=404, detail="Inscription non trouvée")
     return {"message": "Désinscription réussie"}
+
+
+@router.get("/{course_id}/vocabulary", response_model=List[vocabulary_schema.VocabularyItem])
+def get_course_vocabulary(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Récupère tout le vocabulaire d'un cours.
+    """
+    items = db.query(VocabularyItem).join(Chapter).join(Level).filter(Level.course_id == course_id).all()
+    return items

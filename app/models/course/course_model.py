@@ -5,7 +5,7 @@ from app.db.base_class import Base
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .user_course_progress_model import UserCourseProgress
+    from ..progress.user_course_progress_model import UserCourseProgress
     from .level_model import Level
     from .character_model import CharacterSet
 
@@ -29,6 +29,11 @@ class Course(Base):
     # On sauvegarde le modèle utilisé pour générer ce cours.
     model_choice: Mapped[str] = mapped_column(String(50), default="gemini", nullable=False)
     generation_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
+
+    # --- NOUVEAUX CHAMPS POUR LE SUIVI ---
+    generation_step: Mapped[Optional[str]] = mapped_column(String(255))
+    generation_progress: Mapped[Optional[int]] = mapped_column(Integer, default=0)
+    # ------------------------------------
 
     # --- Relations ---
     progressions: Mapped[List["UserCourseProgress"]] = relationship(back_populates="course")
