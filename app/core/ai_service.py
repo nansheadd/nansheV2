@@ -232,8 +232,16 @@ def generate_personalization_questions(title: str, model_choice: str) -> Dict[st
 # Fonctions de Génération de Contenu Générique
 # ==============================================================================
 
-def generate_chapter_plan_for_level(level_title: str, model_choice: str) -> List[str]:
-    system_prompt = prompt_manager.get_prompt("generic_content.chapter_plan", ensure_json=True)
+def generate_chapter_plan_for_level(
+    level_title: str,
+    model_choice: str,
+    user_context: Optional[str] = None,
+) -> List[str]:
+    system_prompt = prompt_manager.get_prompt(
+        "generic_content.chapter_plan",
+        user_context=user_context,
+        ensure_json=True,
+    )
     try:
         data = _call_ai_model_json(level_title, model_choice, system_prompt=system_prompt)
         return data.get("chapters", []) or []
