@@ -1,15 +1,21 @@
-Tu es un tuteur expert. Ta tâche est de créer un formulaire de questions pour un utilisateur souhaitant apprendre sur le sujet : '{title}'.
+[ROLE: system]
+Génère un mini-formulaire pour personnaliser un cours sur "{{ title }}".
 
-Tu DOIS répondre avec un objet JSON. La sortie NE DOIT contenir aucun texte en dehors de l'objet JSON.
-L'objet JSON doit contenir une clé "fields", qui est une liste de 2 à 3 objets de question.
+CONTRAINTES:
+- JSON STRICT.
+- Types de champs: text, select, multiselect, integer, boolean, slider.
+- Chaque select a des {value,label}.
 
-Chaque objet question DOIT avoir les clés suivantes :
-1. "name": une chaîne courte en snake_case (ex: "current_level").
-2. "label": la question pour l'utilisateur (ex: "Quel est votre niveau actuel ?").
-3. "type": une chaîne (choisir entre "select", "text", "textarea").
-
-Si, et SEULEMENT si, le "type" est "select", tu DOIS ajouter une clé "options".
-La valeur de "options" DOIT être une liste d'OBJETS.
-Chaque objet dans la liste "options" DOIT avoir DEUX clés :
-- "value": une chaîne courte en minuscules, sans espaces (ex: "debutant").
-- "label": le texte affiché à l'utilisateur (ex: "Débutant (A1)").
+SCHÉMA:
+{
+  "fields": [
+    {"name":"level","label":"Ton niveau actuel ?","type":"select","options":[
+      {"value":"a1","label":"A1 Débutant"}, {"value":"a2","label":"A2 Élémentaire"}, {"value":"b1","label":"B1 Intermédiaire"}
+    ]},
+    {"name":"goals","label":"Que veux-tu accomplir ?","type":"multiselect","options":[
+      {"value":"travel","label":"Voyage"}, {"value":"work","label":"Travail"}, {"value":"exam","label":"Examen (DELE/DELF…)"}
+    ]},
+    {"name":"time_per_day","label":"Minutes par jour","type":"slider","min":5,"max":60,"step":5,"default":15},
+    {"name":"include_transliteration","label":"Afficher la translittération ?","type":"boolean","default":true}
+  ]
+}

@@ -7,16 +7,20 @@ import openai
 from openai import OpenAI
 import google.generativeai as genai
 
+from typing import List, Dict, Any, Optional
+
 from app.core.config import settings
 from app.core import prompt_manager
-from typing import List, Dict, Any
+from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
 
 logger = logging.getLogger(__name__)
 
-# --- Configuration des Clients API (inchangée) ---
+# ==============================================================================
+# Configuration des Clients API
+# ==============================================================================
 try:
     genai.configure(api_key=settings.GOOGLE_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
+    gemini_model = genai.GenerativeModel("gemini-1.5-pro-latest")
     logger.info("✅ Service IA Gemini (1.5 Pro) configuré.")
 except Exception as e:
     gemini_model = None
@@ -30,91 +34,147 @@ except Exception as e:
     logger.error(f"❌ Erreur de configuration pour OpenAI: {e}")
 
 # ==============================================================================
-# Fonctions Privées d'Appel aux IA (inchangées)
+# Fonctions Privées d'Appel aux IA
 # ==============================================================================
-def _call_gemini(prompt: str) -> str:
-    """Fonction privée pour appeler l'API Gemini."""
+
+def _call_gemini(prompt: str, temperature: Optional[float] = None) -> str:
+    """Appel Gemini en JSON (mime type). Renvoie une STR (attendue JSON)."""
     if not gemini_model:
         raise ConnectionError("Le modèle Gemini n'est pas disponible.")
     try:
-        response = gemini_model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(response_mime_type="application/json")
+        gen_cfg = genai.types.GenerationConfig(
+            response_mime_type="application/json",
+            **({"temperature": temperature} if temperature is not None else {})
         )
+        response = gemini_model.generate_content(prompt, generation_config=gen_cfg)
         return response.text
     except Exception as e:
         logger.error(f"Erreur lors de l'appel à l'API Gemini : {e}")
         raise
 
-def _call_openai_llm(user_prompt: str, system_prompt: str = "") -> str:
-    """Fonction privée pour appeler l'API OpenAI avec une extraction JSON robuste."""
+def _call_openai_llm(user_prompt: str, system_prompt: str = "", temperature: Optional[float] = None) -> str:
+    """Appel OpenAI (JSON strict). Renvoie une STR (attendue JSON)."""
     if not openai_client:
         raise ConnectionError("Le client OpenAI n'est pas configuré. Vérifiez votre clé API.")
 
-    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
     try:
-        logger.info(f"Appel à l'API OpenAI avec le modèle gpt-4o-mini")
+        logger.info("Appel à l'API OpenAI avec le modèle gpt-4o-mini")
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            **({"temperature": temperature} if temperature is not None else {})
         )
         return response.choices[0].message.content
     except openai.APIError as e:
         logger.error(f"Une erreur API est survenue avec OpenAI : {e}")
         raise
 
-def _call_local_llm(user_prompt: str, system_prompt: str = "") -> str:
-    """Fonction privée pour appeler le LLM local via Ollama."""
+def _call_local_llm(user_prompt: str, system_prompt: str = "", temperature: Optional[float] = None) -> str:
+    """Appel LLM local via Ollama (format JSON). Renvoie une STR (attendue JSON)."""
     if not settings.LOCAL_LLM_URL:
         raise ConnectionError("L'URL du LLM local (Ollama) n'est pas configurée.")
-    
+
     full_url = f"{settings.LOCAL_LLM_URL.rstrip('/')}/api/chat"
     messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-    payload = {"model": "llama3:8b", "messages": messages, "format": "json", "stream": False}
-    
+    payload: Dict[str, Any] = {
+        "model": "llama3:8b",
+        "messages": messages,
+        "format": "json",
+        "stream": False,
+    }
+    if temperature is not None:
+        payload["options"] = {"temperature": temperature}
+
     try:
         response = requests.post(full_url, json=payload, timeout=120)
         response.raise_for_status()
         content = response.json().get("message", {}).get("content", "")
-        if content and content.strip() not in ['{}', '[]']:
+        if content and content.strip() not in ["{}", "[]"]:
             return content
         raise ValueError("Ollama a renvoyé une réponse vide ou malformée.")
     except requests.exceptions.RequestException as e:
         logger.error(f"ERREUR CRITIQUE lors de l'appel à Ollama : {e}")
         raise
 
+# ==============================================================================
+# Orchestrateur & Variante JSON avec retries
+# ==============================================================================
+
 def _call_ai_model(user_prompt: str, model_choice: str, system_prompt: str = "") -> str:
-    """Chef d'orchestre : choisit quel modèle appeler."""
+    """
+    Chef d'orchestre de bas niveau : renvoie une STR (qui devrait être du JSON),
+    pour compatibilité ascendante.
+    """
     logger.info(f"Appel à l'IA avec le modèle : {model_choice}")
-    if model_choice == 'local':
+    if model_choice == "local":
         return _call_local_llm(user_prompt=user_prompt, system_prompt=system_prompt)
-    elif model_choice.startswith('openai_'):
+    elif model_choice.startswith("openai_"):
         return _call_openai_llm(user_prompt=user_prompt, system_prompt=system_prompt)
-    else: # Gemini par défaut
+    else:  # Gemini par défaut
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         return _call_gemini(full_prompt)
+
+def _call_ai_model_json(
+    user_prompt: str,
+    model_choice: str,
+    system_prompt: str = "",
+    max_retries: int = 2
+) -> Dict[str, Any]:
+    """
+    Appelle _call_ai_model puis parse en JSON avec safe_json_loads.
+    En cas d'échec, réessaye avec un 'repair hint' et une température abaissée.
+    """
+    last_exc: Optional[Exception] = None
+    sys_base = system_prompt or ""
+    repair = (
+        "\n\n[CONTRAINTE DE SORTIE]\n"
+        "- Ta réponse précédente n'était pas un JSON valide.\n"
+        "- Réponds STRICTEMENT avec un unique objet JSON valide.\n"
+        "- Pas de backticks, pas de commentaires, pas de texte hors JSON."
+    )
+
+    for attempt in range(max_retries + 1):
+        temp = 0.2 if attempt > 0 else None
+        sys_used = sys_base if attempt == 0 else (sys_base + repair)
+        try:
+            if model_choice == "local":
+                raw = _call_local_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
+            elif model_choice.startswith("openai_"):
+                raw = _call_openai_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
+            else:
+                full_prompt = f"{sys_used}\n\n{user_prompt}"
+                raw = _call_gemini(full_prompt, temperature=temp)
+
+            return safe_json_loads(raw)
+        except Exception as e:
+            last_exc = e
+            logger.warning(f"Tentative JSON {attempt+1}/{max_retries+1} échouée: {e}")
+
+    raise last_exc if last_exc else RuntimeError("Échec d'appel JSON sans exception d'origine.")
 
 # ==============================================================================
 # Fonctions de Planification et Génération de Cours
 # ==============================================================================
 
 def classify_course_topic(title: str, model_choice: str) -> str:
-    system_prompt = prompt_manager.get_prompt("course_planning.classify_topic")
+    system_prompt = prompt_manager.get_prompt("course_planning.classify_topic", ensure_json=True)
     try:
-        response_str = _call_ai_model(title, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str).get("category", "general")
+        data = _call_ai_model_json(title, model_choice, system_prompt=system_prompt)
+        return data.get("category", "general")
     except Exception as e:
         logger.error(f"Erreur de classification pour '{title}': {e}")
         return "general"
 
 def generate_learning_plan(title: str, course_type: str, model_choice: str) -> dict:
-    system_prompt = prompt_manager.get_prompt("course_planning.generic_plan")
+    system_prompt = prompt_manager.get_prompt("course_planning.generic_plan", ensure_json=True)
     user_prompt = f"Sujet du cours : {title}. Catégorie : {course_type}."
     try:
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str)
+        return _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
     except Exception as e:
         logger.error(f"Erreur de plan de cours pour '{title}': {e}")
         return {}
@@ -123,11 +183,11 @@ def generate_adaptive_learning_plan(title: str, personalization_details: Dict[st
     user_context = json.dumps(personalization_details, ensure_ascii=False)
     system_prompt = prompt_manager.get_prompt(
         "course_planning.adaptive_plan",
-        user_context=user_context
+        user_context=user_context,
+        ensure_json=True
     )
     try:
-        response_str = _call_ai_model(title, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str)
+        return _call_ai_model_json(title, model_choice, system_prompt=system_prompt)
     except Exception as e:
         logger.error(f"Erreur de plan de cours adapté pour '{title}': {e}")
         return {}
@@ -136,25 +196,33 @@ def generate_personalization_questions(title: str, model_choice: str) -> Dict[st
     logger.info(f"IA - Génération des questions de personnalisation pour '{title}'")
     system_prompt = prompt_manager.get_prompt(
         "course_planning.personalization_questions",
-        title=title
+        title=title,
+        ensure_json=True
     )
     user_prompt = f"Génère les questions de personnalisation pour un cours sur : {title}"
     try:
-        # ... (la logique de correction automatique reste ici, elle est très utile)
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        data = json.loads(response_str)
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+
+        # Normalisation des options de select
         if "fields" in data:
             for field in data["fields"]:
                 if field.get("type") == "select" and "options" in field:
-                    corrected_options = [
-                        opt if isinstance(opt, dict) else {
-                            "value": str(opt).lower().replace(" ", "_"), "label": str(opt)
-                        } for opt in field["options"]
-                    ]
-                    field["options"] = corrected_options
-        if "fields" in data and isinstance(data["fields"], list): return data
+                    corrected = []
+                    for opt in field["options"]:
+                        if isinstance(opt, dict):
+                            corrected.append(opt)
+                        else:
+                            corrected.append({"value": str(opt).lower().replace(" ", "_"), "label": str(opt)})
+                    field["options"] = corrected
+
+        if "fields" in data and isinstance(data["fields"], list):
+            return data
+
+        # fallback si la racine n'est pas conforme
         for key, value in data.items():
-            if isinstance(value, list): return {"fields": value}
+            if isinstance(value, list):
+                return {"fields": value}
+
         raise ValueError("La réponse de l'IA ne contient aucune liste de champs valide.")
     except Exception as e:
         logger.error(f"Erreur de génération du formulaire pour '{title}': {e}", exc_info=True)
@@ -165,39 +233,44 @@ def generate_personalization_questions(title: str, model_choice: str) -> Dict[st
 # ==============================================================================
 
 def generate_chapter_plan_for_level(level_title: str, model_choice: str) -> List[str]:
-    system_prompt = prompt_manager.get_prompt("generic_content.chapter_plan")
+    system_prompt = prompt_manager.get_prompt("generic_content.chapter_plan", ensure_json=True)
     try:
-        response_str = _call_ai_model(level_title, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str).get("chapters", [])
+        data = _call_ai_model_json(level_title, model_choice, system_prompt=system_prompt)
+        return data.get("chapters", []) or []
     except Exception as e:
         logger.error(f"Erreur de plan de chapitre pour '{level_title}': {e}")
         return []
 
 def generate_lesson_for_chapter(chapter_title: str, model_choice: str) -> str:
-    system_prompt = prompt_manager.get_prompt("generic_content.lesson")
+    system_prompt = prompt_manager.get_prompt("generic_content.lesson", ensure_json=True)
     try:
-        response_str = _call_ai_model(chapter_title, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str).get("lesson_text", "")
+        data = _call_ai_model_json(chapter_title, model_choice, system_prompt=system_prompt)
+        return data.get("lesson_text", "") or ""
     except Exception as e:
         logger.error(f"Erreur de génération de leçon pour '{chapter_title}': {e}")
         return ""
 
-def generate_exercises_for_lesson(lesson_text: str, chapter_title: str, course_type: str, model_choice: str) -> List[Dict[str, Any]]:
+def generate_exercises_for_lesson(
+    lesson_text: str,
+    chapter_title: str,
+    course_type: str,
+    model_choice: str
+) -> List[Dict[str, Any]]:
     logger.info(f"Génération des exercices pour le chapitre '{chapter_title}' (Type: {course_type})")
     exercise_types = ["qcm", "fill_in_the_blank", "discussion"]
-    if course_type == 'langue':
+    if course_type == "langue":
         exercise_types.extend(["character_recognition", "association_drag_drop", "sentence_construction"])
-    
+
     system_prompt = prompt_manager.get_prompt(
         "generic_content.exercises",
         course_type=course_type,
         chapter_title=chapter_title,
-        exercise_types=json.dumps(exercise_types)
+        exercise_types=json.dumps(exercise_types, ensure_ascii=False),
+        ensure_json=True
     )
     try:
-        response_str = _call_ai_model(lesson_text, model_choice, system_prompt=system_prompt)
-        data = json.loads(response_str)
-        exercises = data.get("exercises", [])
+        data = _call_ai_model_json(lesson_text, model_choice, system_prompt=system_prompt)
+        exercises = data.get("exercises", []) or []
         return [ex for ex in exercises if ex.get("content_json")]
     except Exception as e:
         logger.error(f"Erreur de génération d'exercices pour '{chapter_title}': {e}", exc_info=True)
@@ -207,35 +280,69 @@ def generate_exercises_for_lesson(lesson_text: str, chapter_title: str, course_t
 # Fonctions Pédagogiques Spécifiques aux Langues
 # ==============================================================================
 
-def generate_language_pedagogical_content(course_title: str, chapter_title: str, model_choice: str) -> Dict[str, Any]:
+def generate_language_pedagogical_content(
+    course_title: str,
+    chapter_title: str,
+    model_choice: str,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Retourne un dict avec clés: 'vocabulary', 'grammar', (évent. 'phrases'...).
+    """
     logger.info(f"IA Service: Génération du contenu pédagogique pour '{chapter_title}' (Cours: {course_title})")
     system_prompt = prompt_manager.get_prompt(
         "language_generation.pedagogical_content",
         course_title=course_title,
-        chapter_title=chapter_title
+        chapter_title=chapter_title,
+        ensure_json=True,
+        **kwargs  # ex: lang_code="ja", items_per_chapter=12, etc.
     )
     user_prompt = f"Génère le contenu pour le chapitre '{chapter_title}' du cours '{course_title}'."
     try:
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str)
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+        # garde-fous
+        data["vocabulary"] = data.get("vocabulary") or []
+        data["grammar"] = data.get("grammar") or []
+        return data
     except Exception as e:
         logger.error(f"Erreur de génération de contenu pédagogique pour '{chapter_title}': {e}")
         return {"vocabulary": [], "grammar": []}
 
-def generate_language_dialogue(course_title: str, chapter_title: str, vocabulary: list, grammar: list, model_choice: str) -> str:
+def generate_language_dialogue(
+    course_title: str,
+    chapter_title: str,
+    vocabulary: list,
+    grammar: list,
+    model_choice: str,
+    **kwargs
+) -> str:
+    """
+    Retourne une STRING JSON (le contenu de la clé 'dialogue' sérialisé) pour
+    stockage dans un champ texte. Si besoin tu peux json.loads côté lecture.
+    """
     logger.info(f"IA Service: Génération du dialogue pour '{chapter_title}' (Cours: {course_title})")
-    vocab_str = ", ".join([f"'{item['term']}' ({item['translation']})" for item in vocabulary])
-    grammar_str = " et ".join([f"'{rule['rule_name']}'" for rule in grammar])
+    # On passe seulement ce qui est utile (id/term/rule_name) pour éviter les prompts géants
+    vocab_refs = ", ".join([f"{it.get('id','') or it.get('term','')}" for it in vocabulary])
+    grammar_refs = ", ".join([f"{gr.get('id','') or gr.get('rule_name','')}" for gr in grammar])
+
     system_prompt = prompt_manager.get_prompt(
         "language_generation.dialogue",
         course_title=course_title,
         chapter_title=chapter_title,
-        vocab_str=vocab_str,
-        grammar_str=grammar_str
+        target_cefr=kwargs.get("target_cefr", "A1"),
+        max_turns=kwargs.get("max_turns", 8),
+        include_transliteration=kwargs.get("include_transliteration"),
+        include_french_gloss=kwargs.get("include_french_gloss"),
+        ensure_json=True
     )
+
     try:
-        response_str = _call_ai_model("Écris le dialogue maintenant.", model_choice, system_prompt=system_prompt)
-        return json.loads(response_str).get("dialogue", "Erreur: Le dialogue n'a pas pu être généré.")
+        data = _call_ai_model_json("Écris le dialogue maintenant.", model_choice, system_prompt=system_prompt)
+        dlg = data.get("dialogue")
+        # On renvoie une STRING JSON (pour stockage dans un champ texte)
+        if dlg is None:
+            return "Erreur: Le dialogue n'a pas pu être généré."
+        return json.dumps(dlg, ensure_ascii=False)
     except Exception as e:
         logger.error(f"Erreur de génération de dialogue pour '{chapter_title}': {e}")
         return "Le dialogue n'a pas pu être généré en raison d'une erreur technique."
@@ -248,29 +355,27 @@ def analyze_user_essay(prompt: str, guidelines: str, user_essay: str, model_choi
     system_prompt = prompt_manager.get_prompt(
         "analysis.analyze_essay",
         prompt=prompt,
-        guidelines=guidelines
+        guidelines=guidelines,
+        ensure_json=True
     )
     user_prompt = f"Voici l'essai : \"{user_essay}\""
     try:
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str)
+        return _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
     except Exception as e:
         logger.error(f"Erreur lors de l'analyse de l'essai: {e}")
         return {"evaluation": "L'analyse a échoué.", "is_validated": False}
 
 def start_ai_discussion(prompt: str, user_first_post: str, model_choice: str) -> Dict[str, Any]:
-    system_prompt = prompt_manager.get_prompt("analysis.start_discussion", prompt=prompt)
+    system_prompt = prompt_manager.get_prompt("analysis.start_discussion", prompt=prompt, ensure_json=True)
     user_prompt = f"Première intervention de l'utilisateur : \"{user_first_post}\""
     try:
-        # ... (la logique pour initialiser l'historique reste ici)
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        response_data = json.loads(response_str)
-        response_data['history'] = [
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+        data["history"] = [
             {"author": "user", "message": user_first_post},
-            {"author": "ia", "message": response_data.get("response_text")}
+            {"author": "ia", "message": data.get("response_text")}
         ]
-        response_data["is_validated"] = False
-        return response_data
+        data["is_validated"] = False
+        return data
     except Exception as e:
         logger.error(f"Erreur lors de l'initialisation de la discussion: {e}")
         return {"response_text": "Je n'ai pas bien compris. Pouvez-vous reformuler ?", "is_validated": False}
@@ -280,12 +385,12 @@ def continue_ai_discussion(prompt: str, history: List[Dict[str, str]], user_mess
     system_prompt = prompt_manager.get_prompt(
         "analysis.continue_discussion",
         prompt=prompt,
-        history_str=history_str
+        history_str=history_str,
+        ensure_json=True
     )
     user_prompt = f"Nouveau message de l'utilisateur : \"{user_message}\""
     try:
-        response_str = _call_ai_model(user_prompt, model_choice, system_prompt=system_prompt)
-        return json.loads(response_str)
+        return _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
     except Exception as e:
         logger.error(f"Erreur lors de la continuation de la discussion: {e}")
         return {"response_text": "Je rencontre un problème technique.", "is_complete": False}

@@ -1,8 +1,31 @@
-Tu es un scénariste pédagogique pour un cours de '{course_title}'. Ta mission est d'écrire un dialogue court et naturel pour le chapitre '{chapter_title}'.
-    
-CONTRAINTES STRICTES :
-1. Le dialogue doit être écrit en '{course_title}'.
-2. Il doit utiliser principalement le vocabulaire suivant : {vocab_str}.
-3. Il doit illustrer la ou les règles de grammaire suivantes : {grammar_str}.
-    
-Tu DOIS répondre avec un JSON contenant une seule clé "dialogue".
+[ROLE: system]
+Tu es scénariste pédagogique pour "{{ course_title }}", chapitre "{{ chapter_title }}".
+Écris un dialogue court, naturel, qui UTILISE principalement le vocabulaire et ILLUSTRE les règles de grammaire fournies.
+
+PARAMÈTRES:
+- max_turns={{ max_turns|default(8) }}
+- include_transliteration={{ include_transliteration|default(true) }}
+- include_french_gloss={{ include_french_gloss|default(true) }}
+
+CONTRAINTES:
+- JSON STRICT, PAS de texte hors JSON.
+- Chaque réplique référence les IDs vocab/grammaire (si utilisés).
+- Style: niveau {{ target_cefr|default('A1') }}, phrases courtes.
+
+SCHÉMA:
+{
+  "dialogue": {
+    "setting": "Contexte court",
+    "turns": [
+      {
+        "speaker": "A|B",
+        "text_tl": "…",
+        "transliteration": "… (ou null si latin)",
+        "translation_fr": "… (si include_french_gloss=true)",
+        "vocab_refs": ["v_salut_001"],
+        "grammar_refs": ["g_be_present_001"],
+        "notes_fr": "Astuce culturelle (facultatif)"
+      }
+    ]
+  }
+}
