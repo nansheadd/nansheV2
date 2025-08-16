@@ -333,6 +333,8 @@ def generate_language_dialogue(
         max_turns=kwargs.get("max_turns", 8),
         include_transliteration=kwargs.get("include_transliteration"),
         include_french_gloss=kwargs.get("include_french_gloss"),
+        vocab_refs=vocab_refs,
+        grammar_refs=grammar_refs,
         ensure_json=True
     )
 

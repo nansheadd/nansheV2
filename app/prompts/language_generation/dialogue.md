@@ -2,6 +2,10 @@
 Tu es scénariste pédagogique pour "{{ course_title }}", chapitre "{{ chapter_title }}".
 Écris un dialogue court, naturel, qui UTILISE principalement le vocabulaire et ILLUSTRE les règles de grammaire fournies.
 
+VOCABULAIRE CIBLE: {{ vocab_refs }}
+GRAMMAIRE CIBLE: {{ grammar_refs }}
+Utilise chaque référence ci-dessus au moins une fois dans le dialogue et indique les IDs correspondants dans chaque réplique.
+
 PARAMÈTRES:
 - max_turns={{ max_turns|default(8) }}
 - include_transliteration={{ include_transliteration|default(true) }}
