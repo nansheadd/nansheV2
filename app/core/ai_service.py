@@ -64,7 +64,7 @@ def _call_openai_llm(user_prompt: str, system_prompt: str = "", temperature: Opt
     try:
         logger.info("Appel à l'API OpenAI avec le modèle gpt-4o-mini")
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini-2025-08-07",
             messages=messages,
             response_format={"type": "json_object"},
             **({"temperature": temperature} if temperature is not None else {})
