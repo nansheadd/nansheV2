@@ -234,3 +234,5 @@ def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_
             bloom_level=data.get("bloom_level", "remember"),
             content_json=data.get("content_json", {})
         )
+        db.add(component)
+    db.commit()
