@@ -38,7 +38,8 @@ def get_level_with_chapters(db: Session, level_id: int, user_id: int):
         logger.info(f"Génération JIT des chapitres pour '{level.title}'...")
         chapter_titles = generate_chapter_plan_for_level(
             level_title=level.title,
-            model_choice=level.course.model_choice
+            model_choice=level.course.model_choice,
+            user_context=None,
         )
         if chapter_titles:
             for i, title in enumerate(chapter_titles):

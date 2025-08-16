@@ -137,9 +137,8 @@ class CourseGenerator:
         
         chapter_titles = ai_service.generate_chapter_plan_for_level(
             level_title=level.title,
-            model_choice=self.model_choice
-            # Note: La fonction `generate_chapter_plan_for_level` dans ai_service.py devrait
-            # être mise à jour pour accepter un `user_context` optionnel dans son prompt.
+            model_choice=self.model_choice,
+            user_context=user_context_str,
         )
         if not chapter_titles: 
             logger.warning(f"    -> Aucun chapitre généré pour le niveau '{level.title}'.")
