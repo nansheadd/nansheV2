@@ -1,23 +1,34 @@
-# Fichier: nanshe/backend/app/main.py
+# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SQLADMIN)
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+
+# Imports de l'application
 from app.core.config import settings
-
-from app.db.session import engine
 from app.db.base import Base
+from app.api.v2.api import api_router
+from app.core.security import verify_password
+from app.models.user.user_model import User
+from app.db.session import async_engine, SessionLocal
 
+# Imports pour SQLAdmin
+from sqladmin import Admin
+from sqladmin.authentication import AuthenticationBackend
+from app.admin import UserAdmin, CourseAdmin, AITokenLogAdmin # On importe les vues
 
-# --- Configuration ---
+# --- Configuration du logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- Initialisation de l'application FastAPI ---
 app = FastAPI(
     title="Nanshe API V2",
     openapi_url="/api/v2/openapi.json"
 )
 
-origins = ["http://localhost:3000", "http://localhost:5173"] # Pour le frontend
+# --- Configuration des Middlewares ---
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -26,28 +37,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Backend d'Authentification pour SQLAdmin ---
+class AdminAuth(AuthenticationBackend):
+    async def login(self, request: Request) -> bool:
+        form = await request.form()
+        username = form.get("username")
+        password = form.get("password")
+
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.username == username).first()
+
+        if user and user.is_superuser and verify_password(password, user.hashed_password):
+            request.session.update({"token": "admin_logged_in", "user": user.username})
+            return True
+        return False
+
+    async def logout(self, request: Request) -> bool:
+        request.session.clear()
+        return True
+
+    async def authenticate(self, request: Request) -> bool:
+        return "token" in request.session
+
+authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
+
+# --- Initialisation de l'Admin ---
+admin = Admin(app, async_engine, authentication_backend=authentication_backend, base_url="/admin")
+
+# Ajout des vues à l'interface d'administration
+admin.add_view(UserAdmin)
+admin.add_view(CourseAdmin)
+admin.add_view(AITokenLogAdmin)
+
+# --- Routeurs de l'API principale ---
+app.include_router(api_router, prefix="/api/v2")
+
 # --- Événement de Démarrage ---
 @app.on_event("startup")
-def on_startup():
-    """
-    Cet événement est déclenché au démarrage du serveur.
-    Nous l'utilisons pour créer les tables de la base de données.
-    """
+async def startup():
     logger.info("Vérification et création des tables de la base de données...")
-    try:
-        # Cette commande magique crée toutes les tables qui héritent de `Base`
-        # si elles n'existent pas déjà.
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Les tables de la base de données sont prêtes.")
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la création des tables : {e}")
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("✅ Les tables de la base de données sont prêtes.")
 
 # --- Route Racine ---
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Nanshe API V2!"}
-
-# Note : On ajoutera les routeurs de l'API ici plus tard
-from app.api.v2.api import api_router
-
-app.include_router(api_router, prefix="/api/v2")
