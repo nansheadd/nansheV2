@@ -4,8 +4,14 @@ import json
 import logging
 import requests
 import openai
-from openai import OpenAI
+import tiktoken 
 import google.generativeai as genai
+from sqlalchemy.orm import Session
+from app.models.user.user_model import User
+from app.models.analytics.ai_token_log_model import AITokenLog
+from openai import OpenAI
+
+
 
 from typing import List, Dict, Any, Optional
 
@@ -15,6 +21,93 @@ from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
 
 logger = logging.getLogger(__name__)
 
+MODEL_PRICING = {
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    # Ajoutez les autres modèles ici
+}
+
+try:
+    encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+except Exception:
+    encoding = tiktoken.get_encoding("cl100k_base")
+
+
+def call_ai_and_log(
+    db: Session,
+    user: User,
+    model_choice: str,
+    system_prompt: str,
+    user_prompt: str,
+    feature_name: str
+) -> Dict[str, Any]:
+    """
+    Wrapper qui appelle l'IA, compte les tokens, loggue les coûts, et retourne la réponse.
+    """
+    # Compter les tokens du prompt
+    prompt_tokens = len(encoding.encode(system_prompt + user_prompt))
+    
+    # Appel à l'IA (en utilisant notre fonction existante)
+    response_data = _call_ai_model_json(
+        user_prompt=user_prompt,
+        model_choice=model_choice,
+        system_prompt=system_prompt
+    )
+    
+    response_text = json.dumps(response_data)
+    completion_tokens = len(encoding.encode(response_text))
+    
+    # Calculer le coût
+    cost = 0.0
+    if model_choice in MODEL_PRICING:
+        prices = MODEL_PRICING[model_choice]
+        cost = ((prompt_tokens / 1_000_000) * prices["input"]) + \
+               ((completion_tokens / 1_000_000) * prices["output"])
+
+    # Enregistrer dans la base de données
+    log_entry = AITokenLog(
+        user_id=user.id,
+        feature=feature_name,
+        model_name=model_choice,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost
+    )
+    db.add(log_entry)
+    db.commit()
+    
+    return response_data
+
+def _summarize_text_for_prompt(
+    db: Session,
+    user: User,
+    text_to_summarize: str,
+    prompt_name: str # ex: "toolbox.summarize_history"
+) -> str:
+    """
+    Utilise un prompt spécifique pour résumer un texte et loggue l'appel.
+    Retourne le résumé textuel.
+    """
+    system_prompt = prompt_manager.get_prompt(
+        prompt_name,
+        text_to_summarize=text_to_summarize,
+        ensure_json=True
+    )
+    
+    try:
+        # On utilise call_ai_and_log pour le suivi des coûts
+        response_data = call_ai_and_log(
+            db=db,
+            user=user,
+            model_choice="openai_gpt4o-mini", # On utilise un modèle rapide
+            system_prompt=system_prompt,
+            user_prompt="Effectue la tâche de résumé demandée.",
+            feature_name=f"summarizer_{prompt_name}"
+        )
+        return response_data.get("summary", text_to_summarize) # Fallback: retourne le texte original en cas d'erreur
+    except Exception as e:
+        logger.error(f"Échec de la summarisation avec le prompt {prompt_name}: {e}")
+
+        
 # ==============================================================================
 # Configuration des Clients API
 # ==============================================================================
@@ -32,6 +125,8 @@ try:
 except Exception as e:
     openai_client = None
     logger.error(f"❌ Erreur de configuration pour OpenAI: {e}")
+
+
 
 # ==============================================================================
 # Fonctions Privées d'Appel aux IA

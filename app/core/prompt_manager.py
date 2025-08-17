@@ -57,10 +57,18 @@ def _coerce_literal(s: str) -> Any:
     return t  # mot nu
 
 def _lookup(context: Dict[str, Any], dotted: str) -> Any:
+    """
+    Looks up a dotted path in a nested context of dicts and objects.
+    """
     cur: Any = context
     for part in dotted.split("."):
         if isinstance(cur, dict) and part in cur:
             cur = cur[part]
+        # --- AJOUT ---
+        # S'il ne s'agit pas d'un dictionnaire, on essaie de le traiter comme un objet.
+        elif hasattr(cur, part):
+            cur = getattr(cur, part)
+        # --- FIN DE L'AJOUT ---
         else:
             return None
     return cur
