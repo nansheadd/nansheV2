@@ -202,6 +202,8 @@ def add_message_to_discussion(db: Session, answer_log_id: int, user: user_model.
     db.refresh(answer_log)
     return answer_log
 
+# Fichier: app/crud/progress_crud.py (fonction process_user_answer finale et complète)
+
 def process_user_answer(db: Session, user: user_model.User, answer_in: progress_schema.AnswerCreate, background_tasks):
     """
     Traite la soumission d'une réponse par un utilisateur, la corrige,
@@ -219,7 +221,6 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
     user_answer_json = answer_in.user_answer_json
     content_json = component.content_json
 
-    # Cas 1 : Exercices nécessitant une analyse par l'IA (non auto-corrigés)
     if component_type in ["essai", "essay", "rédaction", "writing", "discussion"]:
         answer_log = user_answer_log_model.UserAnswerLog(
             user_id=user.id, component_id=component.id, status="pending_review",
@@ -231,42 +232,65 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
         background_tasks.add_task(analyze_complex_answer_task, db, answer_log.id)
         return {"status": "pending_review", "feedback": "Votre réponse a été soumise pour analyse...", "is_correct": False}
 
-    # Cas 2 : Tous les autres exercices sont auto-corrigés
     is_correct = False
     feedback = "Ce n'est pas tout à fait ça. Réessayez !"
 
-    if component_type == "qcm":
-        correct_index = content_json.get("correct_option_index")
+    # --- LOGIQUE DE CORRECTION UNIFIÉE ET ROBUSTE ---
+
+    # Cas 1: L'exercice est un QCM (ou un autre type déguisé en QCM)
+    if component_type in ["qcm", "character_recognition", "sentence_construction"] and "choices" in content_json:
         user_index = user_answer_json.get("selected_option")
-        
-        if correct_index is not None:
-            is_correct = (correct_index == user_index)
-        else:  # Plan B : si l'IA a fourni une réponse textuelle
-            correct_answer_text = content_json.get("correct_answer")
-            options = content_json.get("options", [])
-            if correct_answer_text and user_index is not None and user_index < len(options):
-                is_correct = (options[user_index] == correct_answer_text)
+        correct_index_from_ai = content_json.get("answer") # L'IA utilise souvent "answer" pour l'index base-1
 
+        if user_index is not None and correct_index_from_ai is not None:
+            # On convertit l'index de l'IA (base 1) en index de programmation (base 0)
+            correct_index = int(correct_index_from_ai) - 1
+            is_correct = (user_index == correct_index)
+
+    # Cas 2: Exercice à trous
     elif component_type == "fill_in_the_blank":
-        # Rend la correction flexible : accepte "answers": ["un"] ou "answer": "un"
-        correct_answers_list = content_json.get("answers", [content_json.get("answer")])
-        correct_answers = [str(ans).lower().strip() for ans in correct_answers_list if ans]
-        user_answers = [str(ua).lower().strip() for ua in user_answer_json.get("filled_blanks", [])]
-        is_correct = bool(correct_answers and user_answers and correct_answers == user_answers)
+        user_answers = user_answer_json.get("filled_blanks", [])
+        if "choices" in content_json: # QCM déguisé
+            correct_index = content_json.get("answer", 1) - 1
+            choices = content_json.get("choices", [])
+            if len(user_answers) > 0 and 0 <= correct_index < len(choices):
+                is_correct = (user_answers[0] == choices[correct_index])
+        else: # Vrai texte à trous
+            correct_answers_list = content_json.get("answers", [content_json.get("answer")])
+            correct_answers = [str(ans).lower().strip() for ans in correct_answers_list if ans]
+            user_answers_norm = [str(ua).lower().strip() for ua in user_answers]
+            is_correct = bool(correct_answers and user_answers_norm and correct_answers == user_answers_norm)
 
+    # Cas 3: Réorganisation de mots
     elif component_type in ["reorder", "sentence_construction"]:
         correct_order = content_json.get("correct_order", [])
         user_order = user_answer_json.get("ordered_items", [])
         is_correct = bool(correct_order and user_order and correct_order == user_order)
 
+    # Cas 4: Association par glisser-déposer
+    elif component_type in ["association_drag_drop", "drag_drop"]:
+        user_associations = user_answer_json.get("associations", {})
+        correct_pairs = {}
+        if "pairs" in content_json and isinstance(content_json["pairs"], list):
+            correct_pairs = {f"prompt-{i}": pair.get('answer', '') for i, pair in enumerate(content_json.get("pairs", []))}
+        elif "items_left" in content_json and "items_right" in content_json and "answer" in content_json:
+            items_left = content_json.get("items_left", [])
+            items_right = content_json.get("items_right", [])
+            answer_map = content_json.get("answer", [])
+            try:
+                for mapping in answer_map:
+                    left_index, right_index = mapping[0] - 1, mapping[1] - 1
+                    if 0 <= left_index < len(items_left) and 0 <= right_index < len(items_right):
+                        correct_pairs[f"prompt-{left_index}"] = items_right[right_index]
+            except (IndexError, TypeError):
+                logger.error(f"Impossible de parser la carte de réponses du drag_drop pour le composant {component.id}")
+        is_correct = len(correct_pairs) > 0 and correct_pairs == user_associations
+
+    # Cas 5: Reconnaissance de caractères (mode flashcard)
     elif component_type == "character_recognition":
         is_correct = user_answer_json.get("completed_all", False)
 
-    elif component_type == "association_drag_drop":
-        correct_pairs = {f"prompt-{i}": pair['answer'] for i, pair in enumerate(content_json.get("pairs", []))}
-        user_associations = user_answer_json.get("associations", {})
-        is_correct = len(correct_pairs) > 0 and correct_pairs == user_associations
-        
+    # Cas 6: Quiz
     elif component_type == "quiz":
         user_answers = user_answer_json.get("answers", {})
         questions = content_json.get("questions", [])
@@ -281,7 +305,7 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
     else:
         return {"status": "error", "feedback": f"Type d'exercice '{component.component_type}' non géré.", "is_correct": False}
 
-    # --- Logique commune de sauvegarde et de mise à jour de la progression ---
+    # --- Logique commune de sauvegarde et de mise à jour ---
     status = "correct" if is_correct else "incorrect"
     if is_correct:
         feedback = "Bonne réponse ! Continuez comme ça."
@@ -297,7 +321,6 @@ def process_user_answer(db: Session, user: user_model.User, answer_in: progress_
     update_knowledge_strength(db, user, component, is_correct)
     update_topic_performance(db, user, component, is_correct)
     
-    # Si la réponse est correcte, on vérifie si cela complète le chapitre
     if is_correct:
         check_and_advance_progress_if_chapter_complete(db, user, component)
 

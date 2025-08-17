@@ -357,6 +357,33 @@ def generate_language_dialogue(
         logger.error(f"Erreur de génération de dialogue pour '{chapter_title}': {e}")
         return "Le dialogue n'a pas pu être généré en raison d'une erreur technique."
 
+
+def generate_writing_system_lesson(
+    course_title: str,
+    chapter_title: str,
+    model_choice: str,
+    **kwargs
+) -> str:
+    """
+    Génère une leçon textuelle explicative pour un chapitre théorique (ex: alphabet).
+    """
+    logger.info(f"IA Service: Génération de la leçon théorique pour '{chapter_title}'")
+    system_prompt = prompt_manager.get_prompt(
+        "language_generation.writing_system_lesson",
+        course_title=course_title,
+        chapter_title=chapter_title,
+        ensure_json=True,
+        **kwargs
+    )
+    user_prompt = "Rédige la leçon pour ce chapitre théorique."
+    try:
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+        return data.get("lesson_text", "") or ""
+    except Exception as e:
+        logger.error(f"Erreur de génération de leçon théorique pour '{chapter_title}': {e}")
+        return "Erreur lors de la génération de cette leçon."
+
+
 # ==============================================================================
 # Fonctions d'Analyse des Réponses Complexes
 # ==============================================================================
