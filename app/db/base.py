@@ -28,3 +28,4 @@ from app.models.progress.user_topic_performance_model import UserTopicPerformanc
 from app.models.user.user_model import User
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.analytics.golden_examples_model import GoldenExample
+from app.models.analytics.feedback_model import FeedbackRating, FeedbackStatus

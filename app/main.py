@@ -1,4 +1,4 @@
-# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SQLADMIN)
+# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SQLADMIN ET PGVECTOR FIX)
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +15,11 @@ from app.db.session import async_engine, SessionLocal
 # Imports pour SQLAdmin
 from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
-from app.admin import UserAdmin, CourseAdmin, AITokenLogAdmin # On importe les vues
+from app.admin import UserAdmin, CourseAdmin, AITokenLogAdmin, FeedbackAdmin
+
+# --- NOUVEL IMPORT ---
+from sqlalchemy import text
+# ---------------------
 
 # --- Configuration du logging ---
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +30,6 @@ app = FastAPI(
     title="Nanshe API V2",
     openapi_url="/api/v2/openapi.json"
 )
-
 # --- Configuration des Middlewares ---
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(
@@ -37,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Backend d'Authentification pour SQLAdmin ---
+# --- Initialisation de l'Admin ---
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
         form = await request.form()
@@ -60,23 +63,23 @@ class AdminAuth(AuthenticationBackend):
         return "token" in request.session
 
 authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
-
-# --- Initialisation de l'Admin ---
 admin = Admin(app, async_engine, authentication_backend=authentication_backend, base_url="/admin")
-
-# Ajout des vues à l'interface d'administration
 admin.add_view(UserAdmin)
 admin.add_view(CourseAdmin)
 admin.add_view(AITokenLogAdmin)
-
-# --- Routeurs de l'API principale ---
+admin.add_view(FeedbackAdmin)
 app.include_router(api_router, prefix="/api/v2")
 
-# --- Événement de Démarrage ---
+
+# --- Événement de Démarrage (MODIFIÉ) ---
 @app.on_event("startup")
 async def startup():
     logger.info("Vérification et création des tables de la base de données...")
     async with async_engine.begin() as conn:
+        # --- NOUVEAU BLOC ---
+        # On s'assure que l'extension pgvector est activée
+        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+        # ---------------------
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Les tables de la base de données sont prêtes.")
 
