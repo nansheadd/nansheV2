@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, status, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from app.schemas.progress import progress_schema
+from app.crud.course import chapter_crud
 from app.crud import progress_crud
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
@@ -62,3 +63,22 @@ def reset_chapter_answers(
 ):
     """Réinitialise toutes les réponses d'un utilisateur pour un chapitre donné."""
     return progress_crud.reset_user_answers_for_chapter(db=db, user_id=current_user.id, chapter_id=chapter_id)
+
+@router.post("/chapter/{chapter_id}/complete", status_code=status.HTTP_200_OK)
+def mark_chapter_as_complete(
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Marque un chapitre comme terminé et fait avancer la progression de l'utilisateur.
+    Idéal pour les chapitres théoriques ou pour confirmer la fin d'un chapitre pratique.
+    """
+    chapter = chapter_crud.get_chapter_details(db, chapter_id=chapter_id)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    # On appelle la fonction existante qui gère la logique d'avancement
+    progress_crud.advance_progress(db, user=current_user, chapter=chapter)
+    
+    return {"message": "Progress advanced successfully."}

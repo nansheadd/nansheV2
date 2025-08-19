@@ -1,5 +1,5 @@
 # Fichier : app/services/language_chapter_generator.py
-
+import re
 import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,8 +8,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 
 from app.models.course import chapter_model, vocabulary_item_model, grammar_rule_model, knowledge_component_model
+from app.models.analytics.vector_store_model import VectorStore
+from app.models.user.user_model import User 
+from app.core.ai_service import get_text_embedding
+from app.crud.course import chapter_crud 
 from app.core import ai_service
-from app.crud.course import chapter_crud  # si besoin ailleurs
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +23,44 @@ _PRON_KEYS = (
     "ipa", "pinyin", "romaji", "jyutping", "wylie", "buckwalter",
     "phonetic", "phonetics", "pron"
 )
+
+
+def _index_lesson_content(db: Session, chapter_id: int, lesson_text: str):
+    """Chunks a lesson into paragraphs and indexes them in the vector store."""
+    if not lesson_text:
+        return
+
+    # Simple chunking by splitting on double newlines
+    chunks = re.split(r'\n\s*\n', lesson_text)
+    
+    for chunk in chunks:
+        chunk = chunk.strip()
+        # We ignore small chunks that are likely just titles or noise
+        if len(chunk) < 50: 
+            continue
+            
+        # Create the embedding for the chunk
+        embedding = get_text_embedding(chunk)
+        
+        # Save the chunk and its embedding to the database
+        vector_entry = VectorStore(
+            chapter_id=chapter_id,
+            chunk_text=chunk,
+            embedding=embedding
+        )
+        db.add(vector_entry)
+    
+    db.commit()
+    logger.info(f"✅ Indexed {len(chunks)} chunks for chapter {chapter_id}.")
+
+# Now, find where a lesson is saved (e.g., in `generate_chapter_content_pipeline`)
+# and call this function immediately after.
+#
+# EXAMPLE:
+#   chapter.lesson_text = dialogue_text
+#   chapter.lesson_status = "completed"
+#   db.commit() # Commit the lesson text first
+#   _index_lesson_content(db, chapter.id, dialogue_text)
 
 def _update_chapter_progress(db: Session, chapter: chapter_model.Chapter, step: str, progress: int):
     """Met à jour la progression de la génération pour un chapitre."""
@@ -144,17 +186,16 @@ def _normalize_grammar_for_db(chapter_id: int, rule: dict) -> dict:
     payload.pop("id", None)
     return payload
 
-def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapter):
-    """ Pipeline JIT complète qui s'adapte aux chapitres théoriques ou pratiques. """
+def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapter, user: User):
+    """ Pipeline JIT qui s'adapte aux chapitres théoriques ou pratiques. """
     try:
         logger.info(f"Pipeline JIT (Langue) : Démarrage pour le chapitre '{chapter.title}'")
         _update_chapter_progress(db, chapter, "Analyse du chapitre...", 5)
         course = chapter.level.course
 
-        # --- AIGUILLAGE : CHAPITRE THÉORIQUE OU PRATIQUE ? ---
-        # On vérifie si le marqueur a été mis dans la BDD lors de la création du plan.
+        # --- NOUVEL AIGUILLAGE : CHAPITRE THÉORIQUE OU PRATIQUE ? ---
         if chapter.is_theoretical:
-            # --- PIPELINE POUR CHAPITRE THÉORIQUE ---
+            # --- PIPELINE POUR CHAPITRE THÉORIQUE (ex: Introduction) ---
             logger.info(f"Chapitre théorique détecté pour '{chapter.title}'.")
             
             _update_chapter_progress(db, chapter, "Rédaction de la leçon théorique...", 20)
@@ -167,13 +208,12 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
             chapter.lesson_status = "completed"
             _update_chapter_progress(db, chapter, "Leçon terminée.", 70)
 
-            # On pourrait générer des exercices de reconnaissance de caractères ici si pertinent
-            # Pour l'instant, on se concentre sur la leçon.
-            chapter.exercises_status = "completed" # Pas d'exercices pour l'instant
+            # Pour un chapitre théorique, il n'y a pas d'exercices à générer.
+            chapter.exercises_status = "completed"
             _update_chapter_progress(db, chapter, "Finalisation...", 100)
 
         else:
-            # --- PIPELINE NORMALE POUR CHAPITRE PRATIQUE ---
+            # --- PIPELINE NORMALE POUR CHAPITRE PRATIQUE (celle que nous avons corrigée) ---
             logger.info(f"Chapitre pratique détecté pour '{chapter.title}'.")
             
             _update_chapter_progress(db, chapter, "Génération du vocabulaire...", 10)
@@ -181,6 +221,7 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
                 course_title=course.title, chapter_title=chapter.title, model_choice=course.model_choice
             )
             vocab_items = _save_vocabulary(db, chapter.id, pedagogical_content.get("vocabulary", []))
+            
             _update_chapter_progress(db, chapter, "Génération de la grammaire...", 30)
             grammar_rules = _save_grammar(db, chapter.id, pedagogical_content.get("grammar", []))
 
@@ -189,24 +230,32 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
                 course_title=course.title, chapter_title=chapter.title, vocabulary=vocab_items,
                 grammar=grammar_rules, model_choice=course.model_choice
             )
-            chapter.lesson_text = dialogue_text
+            chapter.lesson_text = dialogue_text # Pour l'instant, la leçon EST le dialogue. On pourra l'enrichir plus tard.
             chapter.lesson_status = "completed"
             _update_chapter_progress(db, chapter, "Dialogue terminé.", 70)
 
             _update_chapter_progress(db, chapter, "Préparation des exercices...", 80)
-            exercises_data = ai_service.generate_exercises_for_lesson(
-                lesson_text=dialogue_text, chapter_title=chapter.title,
-                course_type='langue', model_choice=course.model_choice
+            # Utilise notre logique corrigée sans RAG
+            system_prompt_exercises = ai_service.prompt_manager.get_prompt(
+                "generic_content.exercises",
+                course_type='langue',
+                chapter_title=chapter.title,
+                ensure_json=True
             )
+            exercises_data = ai_service.call_ai_and_log(
+                db=db, user=user, model_choice=course.model_choice,
+                system_prompt=system_prompt_exercises, user_prompt=dialogue_text,
+                feature_name="exercise_generation_direct_lang"
+            ).get("exercises", [])
+            
             _save_exercises_data(db, chapter, exercises_data)
             chapter.exercises_status = "completed"
             _update_chapter_progress(db, chapter, "Finalisation...", 100)
 
         db.commit()
         logger.info(f"Pipeline JIT (Langue) : SUCCÈS pour le chapitre {chapter.id}")
-        
+
     except Exception as e:
-        # sécurise l'accès à l'id + rollback AVANT tout autre accès DB
         chap_id = getattr(chapter, "id", None)
         logger.error(f"Pipeline JIT (Langue) : ÉCHEC pour le chapitre {chap_id}. Erreur: {e}", exc_info=True)
         db.rollback()

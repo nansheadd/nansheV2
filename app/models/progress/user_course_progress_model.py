@@ -1,7 +1,7 @@
 # Fichier: backend/app/models/user_course_progress_model.py (FINAL CORRIGÉ)
 from sqlalchemy import Integer, String, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base import Base
+from app.db.base_class import Base
 from typing import Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 

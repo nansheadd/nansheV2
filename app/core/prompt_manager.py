@@ -111,8 +111,8 @@ def _merge_defaults(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
 JSON_GUARDRAIL = (
     "\n\n[CONTRAINTE DE SORTIE]\n"
-    "- Réponds STRICTEMENT avec un unique objet JSON valide.\n"
-    "- Pas de backticks, pas de texte hors JSON."
+    "- Réponds STRICTEMENT avec un unique objet JSON valide (json seulement).\n"
+    "- Pas de backticks, pas de texte hors JSON / json."
 )
 
 @lru_cache(maxsize=128)

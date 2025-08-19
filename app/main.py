@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 # Imports de l'application
 from app.core.config import settings
-from app.db.base import Base
+from app.db.base_class import Base
 from app.api.v2.api import api_router
 from app.core.security import verify_password
 from app.models.user.user_model import User

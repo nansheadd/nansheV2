@@ -2,7 +2,7 @@
 
 from sqlalchemy import Integer, String, Boolean, DateTime, func # type: ignore
 from sqlalchemy.orm import Mapped, mapped_column, relationship # type: ignore
-from app.db.base import Base
+from app.db.base_class import Base
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
 

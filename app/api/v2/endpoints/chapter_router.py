@@ -43,8 +43,15 @@ def read_chapter_details(
         chapter.exercises_status = "generating"
         db.commit()
         
-        # On lance la tâche de fond spécialisée pour les langues
-        background_tasks.add_task(chapter_crud.generate_language_chapter_content_task, db, chapter_id)
+        # --- MODIFICATION CLÉ ---
+        # On passe maintenant l'ID de l'utilisateur à la tâche de fond
+        background_tasks.add_task(
+            chapter_crud.generate_language_chapter_content_task, 
+            db=db, 
+            chapter_id=chapter_id, 
+            user_id=current_user.id # <-- AJOUTER CET ARGUMENT
+        )
+        # -------------------------
         
         db.refresh(chapter)
     # ---------------------------------------------

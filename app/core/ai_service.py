@@ -8,7 +8,11 @@ import tiktoken
 import google.generativeai as genai
 from sqlalchemy.orm import Session
 from app.models.user.user_model import User
+
+from app.models.analytics.golden_examples_model import GoldenExample
 from app.models.analytics.ai_token_log_model import AITokenLog
+
+from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 
 
@@ -21,16 +25,65 @@ from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
 
 logger = logging.getLogger(__name__)
 
+# This is a lightweight, effective model for generating embeddings.
+# It will be downloaded automatically the first time it's used.
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
 MODEL_PRICING = {
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-5-mini-2025-08-07": {"input": 0.15, "output": 0.60},
     # Ajoutez les autres modèles ici
 }
 
 try:
-    encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+    encoding = tiktoken.encoding_for_model("gpt-5-mini-2025-08-07")
 except Exception:
     encoding = tiktoken.get_encoding("cl100k_base")
 
+
+def _call_ai_with_rag_examples(
+    db: Session,
+    user: User,
+    user_prompt: str,
+    system_prompt_template: str, # Le prompt qui sera rempli
+    feature_name: str,
+    example_type: str, # 'exercise', 'lesson'...
+    model_choice: str,
+    prompt_variables: dict # Toutes les autres variables pour le prompt
+) -> Dict[str, Any]:
+    """
+    Trouve des exemples pertinents, les injecte dans le prompt, et appelle l'IA.
+    """
+    # 1. Recherche d'exemples pertinents
+    prompt_embedding = get_text_embedding(user_prompt)
+    similar_examples = db.query(GoldenExample.content)\
+        .filter(GoldenExample.example_type == example_type)\
+        .order_by(GoldenExample.embedding.l2_distance(prompt_embedding))\
+        .limit(3).all()
+    
+    rag_examples = "\n\n".join([ex[0] for ex in similar_examples])
+    
+    # 2. Construction du prompt final
+    final_system_prompt = prompt_manager.get_prompt(
+        system_prompt_template,
+        rag_examples=rag_examples,
+        ensure_json=True,           # <-- IMPORTANT
+        **prompt_variables
+    )
+
+    # 3. Appel à l'IA avec logging
+    return call_ai_and_log(
+        db=db, user=user, model_choice=model_choice,
+        system_prompt=final_system_prompt, user_prompt=user_prompt,
+        feature_name=feature_name
+    )
+    
+def get_text_embedding(text: str) -> list[float]:
+    """Generates a vector embedding for a given text."""
+    if not text or not isinstance(text, str):
+        return []
+    
+    embedding = embedding_model.encode(text)
+    return embedding.tolist()
 
 def call_ai_and_log(
     db: Session,
@@ -107,7 +160,7 @@ def _summarize_text_for_prompt(
     except Exception as e:
         logger.error(f"Échec de la summarisation avec le prompt {prompt_name}: {e}")
 
-        
+
 # ==============================================================================
 # Configuration des Clients API
 # ==============================================================================
@@ -147,25 +200,47 @@ def _call_gemini(prompt: str, temperature: Optional[float] = None) -> str:
         logger.error(f"Erreur lors de l'appel à l'API Gemini : {e}")
         raise
 
+
+def _inject_json_guard(system_prompt: str, user_prompt: str) -> str:
+    """
+    S'assure que le mot 'json' (en minuscule) apparaît dans les messages
+    quand on utilise response_format={"type": "json_object"} côté OpenAI.
+    Si absent, on ajoute une garde minimaliste côté system prompt.
+    """
+    sp = (system_prompt or "").strip()
+    combined = (sp + " " + (user_prompt or "")).lower()
+    if "json" not in combined:
+        sp = (sp + "\n\nRéponds en json strict (json uniquement).").strip()
+    return sp
+
+
 def _call_openai_llm(user_prompt: str, system_prompt: str = "", temperature: Optional[float] = None) -> str:
-    """Appel OpenAI (JSON strict). Renvoie une STR (attendue JSON)."""
+    """
+    Appel OpenAI (chat.completions) avec response_format=json_object.
+    NOTE: certains modèles (ex: gpt-5-mini-2025-08-07) n'acceptent pas de temperature ≠ 1.
+    On n'envoie donc PAS le paramètre temperature à l'API (on laisse la valeur par défaut côté modèle).
+    """
     if not openai_client:
         raise ConnectionError("Le client OpenAI n'est pas configuré. Vérifiez votre clé API.")
 
+    # Patch : garantir la présence de "json" (minuscule)
+    sp = _inject_json_guard(system_prompt, user_prompt)
+
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": sp},
         {"role": "user", "content": user_prompt},
     ]
+
     try:
-        logger.info("Appel à l'API OpenAI avec le modèle gpt-4o-mini")
+        logger.info("Appel à l'API OpenAI avec le modèle gpt-5-mini-2025-08-07")
+        # ⬇️ NE PAS passer 'temperature' pour éviter le 400 "unsupported_value"
         response = openai_client.chat.completions.create(
             model="gpt-5-mini-2025-08-07",
             messages=messages,
             response_format={"type": "json_object"},
-            **({"temperature": temperature} if temperature is not None else {})
         )
         return response.choices[0].message.content
-    except openai.APIError as e:
+    except Exception as e:
         logger.error(f"Une erreur API est survenue avec OpenAI : {e}")
         raise
 
@@ -234,21 +309,28 @@ def _call_ai_model_json(
     )
 
     for attempt in range(max_retries + 1):
-        temp = 0.2 if attempt > 0 else None
+        # On n'utilise la température que pour Gemini / Local.
+        use_openai = model_choice.startswith("openai_")
+        temp = None if use_openai else (0.2 if attempt == 0 else 0.0)
+
         sys_used = sys_base if attempt == 0 else (sys_base + repair)
         try:
             if model_choice == "local":
-                raw = _call_local_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
-            elif model_choice.startswith("openai_"):
-                raw = _call_openai_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
+                raw = _call_local_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp or 0.0)
+            elif use_openai:
+                raw = _call_openai_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)  # ignoré
             else:
-                full_prompt = f"{sys_used}\n\n{user_prompt}"
-                raw = _call_gemini(full_prompt, temperature=temp)
+                full_prompt = f"{sys_used}\n\n{user_prompt}".strip()
+                raw = _call_gemini(full_prompt, temperature=temp or 0.2)
 
-            return safe_json_loads(raw)
+            data = safe_json_loads(raw)
+            if isinstance(data, list):
+                data = {"exercises": data}
+            return data
         except Exception as e:
             last_exc = e
             logger.warning(f"Tentative JSON {attempt+1}/{max_retries+1} échouée: {e}")
+
 
     raise last_exc if last_exc else RuntimeError("Échec d'appel JSON sans exception d'origine.")
 
@@ -354,30 +436,62 @@ def generate_lesson_for_chapter(chapter_title: str, model_choice: str) -> str:
         return ""
 
 def generate_exercises_for_lesson(
+    db: Session, # On a maintenant besoin de la session DB
+    user: User, # Et de l'utilisateur pour le logging
     lesson_text: str,
     chapter_title: str,
     course_type: str,
     model_choice: str
 ) -> List[Dict[str, Any]]:
+    
     logger.info(f"Génération des exercices pour le chapitre '{chapter_title}' (Type: {course_type})")
-    exercise_types = ["qcm", "fill_in_the_blank", "discussion"]
-    if course_type == "langue":
-        exercise_types.extend(["character_recognition", "association_drag_drop", "sentence_construction"])
-
-    system_prompt = prompt_manager.get_prompt(
-        "generic_content.exercises",
-        course_type=course_type,
-        chapter_title=chapter_title,
-        exercise_types=json.dumps(exercise_types, ensure_ascii=False),
-        ensure_json=True
-    )
+    
     try:
-        data = _call_ai_model_json(lesson_text, model_choice, system_prompt=system_prompt)
-        exercises = data.get("exercises", []) or []
-        return [ex for ex in exercises if ex.get("content_json")]
+        # On remplace l'ancien appel par notre nouveau wrapper RAG
+        data = _call_ai_with_rag_examples(
+            db=db,
+            user=user,
+            user_prompt=lesson_text, # Le contenu de la leçon sert de requête de recherche
+            system_prompt_template="generic_content.exercises_rag", # On va créer ce nouveau prompt
+            feature_name="exercise_generation",
+            example_type="exercise",
+            model_choice=model_choice,
+            prompt_variables={
+                "course_type": course_type,
+                "chapter_title": chapter_title,
+            }
+        )
+        exercises = (
+            data.get("exercises")
+            or data.get("items")
+            or data.get("components")
+            or []
+        )
+        norm = []
+        for ex in exercises:
+            if not isinstance(ex, dict):
+                continue
+            # accepter content_json ou content/structure alternatives
+            content = ex.get("content_json") or ex.get("content") or ex.get("data")
+            if not content:
+                continue
+            norm.append({
+                "title": ex.get("title", "Exercice"),
+                "category": ex.get("category", chapter_title if 'chapter_title' in locals() else "General"),
+                "component_type": ex.get("component_type", ex.get("type", "unknown")),
+                "bloom_level": ex.get("bloom_level", "remember"),
+                "content_json": content
+            })
+
+            return norm
     except Exception as e:
         logger.error(f"Erreur de génération d'exercices pour '{chapter_title}': {e}", exc_info=True)
+        logger.error(
+            "Lorenzo Payload exercices inattendu (aperçu 1k): %s",
+            str(data)[:1000]
+        )
         return []
+    
 
 # ==============================================================================
 # Fonctions Pédagogiques Spécifiques aux Langues

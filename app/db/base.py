@@ -23,3 +23,8 @@ from app.models.course.grammar_rule_model import GrammarRule     # <-- AJOUTER I
 from app.models.progress.user_knowledge_strength_model import UserKnowledgeStrength
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_topic_performance_model import UserTopicPerformance
+
+
+from app.models.user.user_model import User
+from app.models.progress.user_course_progress_model import UserCourseProgress
+from app.models.analytics.golden_examples_model import GoldenExample
