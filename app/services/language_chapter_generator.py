@@ -4,10 +4,13 @@ import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.models.course import knowledge_graph_model
 from sqlalchemy.orm import Session
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 
-from app.models.course import chapter_model, vocabulary_item_model, grammar_rule_model, knowledge_component_model
+from app.models.course import chapter_model, vocabulary_item_model, grammar_rule_model
+from app.models.course.knowledge_component_model import KnowledgeComponent 
+
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.user.user_model import User 
 from app.core.ai_service import get_text_embedding
@@ -306,7 +309,7 @@ def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_
     if not exercises_data:
         raise ValueError("La génération des exercices a renvoyé une liste vide.")
     for data in exercises_data:
-        component = knowledge_component_model.KnowledgeComponent(
+        component = knowledge_graph_model.KnowledgeComponent(
             chapter_id=chapter.id,
             title=data.get("title", "Exercice sans titre"),
             category=data.get("category", chapter.title),

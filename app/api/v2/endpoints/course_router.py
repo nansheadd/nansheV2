@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.schemas.progress import personalization_schema
 from app.schemas.course import vocabulary_schema
+from app.schemas.course import knowledge_graph_schema
+from app.models.course.knowledge_graph_model import KnowledgeNode, KnowledgeEdge
 from app.models.course.vocabulary_item_model import VocabularyItem
 from app.models.course.chapter_model import Chapter
 from app.models.course.level_model import Level
@@ -55,10 +57,9 @@ def get_personalization_form(
         title=course_in.title, model_choice=course_in.model_choice
     )
 
-    # --- LIGNE MODIFIÉE ---
-    # On passe maintenant le 'title' à la fonction de génération des questions
+   
     form_data = ai_service.generate_personalization_questions(
-        title=course_in.title, # <-- Ajout crucial
+        title=course_in.title,
         category=category, 
         model_choice=course_in.model_choice
     )
@@ -130,3 +131,26 @@ def get_course_vocabulary(
     """
     items = db.query(VocabularyItem).join(Chapter).join(Level).filter(Level.course_id == course_id).all()
     return items
+
+
+@router.get("/{course_id}/knowledge-graph", response_model=knowledge_graph_schema.KnowledgeGraph)
+def read_course_knowledge_graph(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Récupère la structure complète du graphe de connaissances pour un cours.
+    """
+    course = course_crud.get_course(db, course_id=course_id)
+    if not course or course.course_type != 'philosophie':
+        raise HTTPException(status_code=404, detail="Graphe de connaissances non trouvé pour ce cours.")
+
+    nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+    edges = db.query(KnowledgeEdge).join(KnowledgeNode, KnowledgeEdge.source_node_id == KnowledgeNode.id).filter(KnowledgeNode.course_id == course_id).all()
+
+    return {
+        "course_title": course.title,
+        "nodes": nodes,
+        "edges": edges
+    }

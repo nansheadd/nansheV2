@@ -1,5 +1,6 @@
 # Fichier: backend/app/crud/course_crud.py (VERSION MISE À JOUR)
 from app.models.user import user_model
+from fastapi import BackgroundTasks
 from app.models.course import course_model
 from app.models.course import level_model
 from sqlalchemy.orm import Session, joinedload
@@ -7,9 +8,12 @@ from sqlalchemy import not_, select
 from app.db.session import SessionLocal
 from app.models.progress import user_course_progress_model
 from app.schemas.course import course_schema
+from app.models.user.user_model import User
 from app.core.ai_service import generate_learning_plan, classify_course_topic
 from app.services.language_course_generator import LanguageCourseGenerator
-from app.services.course_generator import CourseGenerator # <-- IMPORTER LE NOUVEAU SERVICE
+from app.services.course_generator import CourseGenerator
+from app.services.philosophy_course_generator import PhilosophyCourseGenerator
+from app.models.course.knowledge_graph_model import KnowledgeNode
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,7 +34,7 @@ def create_course_shell(db: Session, course_in: course_schema.CourseCreate, crea
     return db_course
 
 # TÂCHE DE FOND RENOMMÉE
-def generate_course_plan_task(course_id: int, creator_id: int): # <-- 2. RETIRER le paramètre db: Session
+def generate_course_plan_task(course_id: int, creator_id: int): 
     """
     Tâche de fond qui classifie le cours, puis appelle le générateur approprié.
     Elle gère sa propre session de base de données.
@@ -55,11 +59,20 @@ def generate_course_plan_task(course_id: int, creator_id: int): # <-- 2. RETIRER
         creator = db.get(user_model.User, creator_id)
 
         if course_type == 'langue':
-            logger.info(f"Cours de langue détecté. Utilisation de LanguageCourseGenerator pour le cours ID: {course_id}")
-            lang_generator = LanguageCourseGenerator(db=db, db_course=db_course, creator=creator)
-            lang_generator.generate_full_course_scaffold()
+            logger.info(f"Cours de langue détecté. Appel de LanguageCourseGenerator pour le cours ID: {course_id}")
+            generator = LanguageCourseGenerator(db=db, db_course=db_course, creator=creator)
+            generator.generate_full_course_scaffold()
+        
+        elif course_type == 'philosophie':
+            logger.info(f"Cours de philosophie détecté. Appel de PhilosophyCourseGenerator...")
+            # On n'a plus besoin de passer background_tasks ici
+            generator = PhilosophyCourseGenerator(db=db, db_course=db_course, creator=creator)
+            # On appelle la méthode qui fait tout de manière séquentielle
+            generator.generate_full_course_graph()
+
         else:
-            logger.info(f"Cours standard détecté. Utilisation du générateur générique pour le cours ID: {course_id}")
+            logger.info(f"Cours standard détecté. Appel du générateur générique pour le cours ID: {course_id}")
+            # La logique pour les cours génériques reste pour l'instant la même
             generate_generic_course_plan(db, db_course, creator)
 
     except Exception as e:
@@ -230,3 +243,29 @@ def unenroll_user_from_course(db: Session, course_id: int, user_id: int):
         db.commit()
         return True
     return False
+
+
+def generate_node_content_task(node_id: int):
+    """Tâche de fond pour générer le contenu et les exercices d'un seul nœud."""
+    db = SessionLocal()
+    try:
+        node = db.get(KnowledgeNode, node_id)
+        if not node:
+            logger.error(f"Tâche de génération de contenu annulée : nœud {node_id} non trouvé.")
+            return
+
+        course = node.course
+        creator = db.query(User).join(user_course_progress_model.UserCourseProgress).filter(
+            user_course_progress_model.UserCourseProgress.course_id == course.id
+        ).first() # On retrouve le créateur via la progression
+
+        generator = PhilosophyCourseGenerator(db=db, db_course=course, creator=creator)
+        
+        # On appelle les méthodes qui génèrent le contenu et les exercices pour CE nœud
+        generator._generate_and_index_node_content(node)
+
+    except Exception as e:
+        logger.error(f"Erreur majeure lors de la génération du contenu du nœud {node_id}: {e}", exc_info=True)
+        # On pourrait ajouter un statut d'erreur sur le nœud ici si nécessaire
+    finally:
+        db.close()

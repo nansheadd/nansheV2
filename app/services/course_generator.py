@@ -3,7 +3,7 @@ import logging
 from app.models.user import user_model
 from app.models.course import chapter_model
 from app.models.course import course_model
-from app.models.course import knowledge_component_model
+from app.models.course import knowledge_graph_model
 from app.models.course import level_model
 from sqlalchemy.orm import Session
 from app.models.progress import user_course_progress_model
@@ -176,7 +176,7 @@ class CourseGenerator:
         )
         if exercises_data:
             for data in exercises_data:
-                component = knowledge_component_model.KnowledgeComponent(
+                component = knowledge_graph_model.KnowledgeComponent(
                     chapter_id=chapter.id,
                     title=data.get("title", "Exercice"),
                     category=data.get("category", chapter.title),

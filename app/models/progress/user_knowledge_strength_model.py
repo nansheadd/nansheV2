@@ -8,7 +8,7 @@ from datetime import datetime
 
 if TYPE_CHECKING:
     from ..user.user_model import User
-    from ..course.knowledge_component_model import KnowledgeComponent
+    from ..course.knowledge_graph_model import KnowledgeComponent
 
 class UserKnowledgeStrength(Base):
     """
