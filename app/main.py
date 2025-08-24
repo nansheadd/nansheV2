@@ -15,7 +15,13 @@ from app.db.session import async_engine, SessionLocal
 # Imports pour SQLAdmin
 from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
-from app.admin import UserAdmin, CourseAdmin, AITokenLogAdmin, FeedbackAdmin
+from app.admin import (
+    AITokenLogAdmin,
+    CourseAdmin,
+    FeedbackAdmin,
+    UserAdmin,
+    register_all_models,
+)
 
 # --- NOUVEL IMPORT ---
 from sqlalchemy import text
@@ -68,6 +74,7 @@ admin.add_view(UserAdmin)
 admin.add_view(CourseAdmin)
 admin.add_view(AITokenLogAdmin)
 admin.add_view(FeedbackAdmin)
+register_all_models(admin)
 app.include_router(api_router, prefix="/api/v2")
 
 
