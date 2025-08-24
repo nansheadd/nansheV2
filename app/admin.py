@@ -20,6 +20,11 @@ from app.models.course.chapter_model import Chapter
 from app.models.course.vocabulary_item_model import VocabularyItem
 from app.models.course.grammar_rule_model import GrammarRule
 from app.models.course.knowledge_component_model import KnowledgeComponent
+from app.models.course.knowledge_graph_model import (
+    KnowledgeEdge,
+    KnowledgeNode,
+    NodeExercise,
+)
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.user.user_model import User
 
@@ -277,6 +282,76 @@ class KnowledgeComponentAdmin(ModelView, model=KnowledgeComponent):
     can_delete = True
 
 
+class KnowledgeNodeAdmin(ModelView, model=KnowledgeNode):
+    """Admin view for knowledge graph nodes."""
+
+    name = "Noeud"
+    name_plural = "Noeuds"
+    icon = "fa-solid fa-circle-nodes"
+    column_list = [
+        KnowledgeNode.id,
+        KnowledgeNode.title,
+        KnowledgeNode.node_type,
+        KnowledgeNode.course,
+    ]
+
+    column_formatters = {
+        KnowledgeNode.course: lambda m, a: m.course.title if m.course else "",
+    }
+
+    column_searchable_list = [KnowledgeNode.title]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class NodeExerciseAdmin(ModelView, model=NodeExercise):
+    """Admin view for exercises attached to knowledge nodes."""
+
+    name = "Exercice"
+    name_plural = "Exercices"
+    icon = "fa-solid fa-puzzle-piece"
+    column_list = [
+        NodeExercise.id,
+        NodeExercise.title,
+        NodeExercise.component_type,
+        NodeExercise.node,
+    ]
+
+    column_formatters = {
+        NodeExercise.node: lambda m, a: m.node.title if m.node else "",
+    }
+
+    column_searchable_list = [NodeExercise.title]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class KnowledgeEdgeAdmin(ModelView, model=KnowledgeEdge):
+    """Admin view for edges between knowledge nodes."""
+
+    name = "Lien"
+    name_plural = "Liens"
+    icon = "fa-solid fa-link"
+    column_list = [
+        KnowledgeEdge.id,
+        KnowledgeEdge.source_node,
+        KnowledgeEdge.relation_type,
+        KnowledgeEdge.target_node,
+    ]
+
+    column_formatters = {
+        KnowledgeEdge.source_node: lambda m, a: m.source_node.title if m.source_node else "",
+        KnowledgeEdge.target_node: lambda m, a: m.target_node.title if m.target_node else "",
+    }
+
+    column_searchable_list = [KnowledgeEdge.relation_type]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
 class UserCourseProgressAdmin(ModelView, model=UserCourseProgress):
     """Admin view for user course progress."""
 
@@ -326,6 +401,9 @@ def register_all_models(admin) -> None:
         VocabularyItem,
         GrammarRule,
         KnowledgeComponent,
+        KnowledgeNode,
+        NodeExercise,
+        KnowledgeEdge,
         UserCourseProgress,
     }
 

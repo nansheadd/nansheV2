@@ -21,6 +21,10 @@ class NodeExercise(Base):
 
     node: Mapped["KnowledgeNode"] = relationship(back_populates="exercises")
 
+    def __repr__(self) -> str:  # pragma: no cover - simple representation
+        """Return a readable representation for admin interfaces."""
+        return f"<NodeExercise id={self.id} title='{self.title}'>"
+
 
 class KnowledgeNode(Base):
     __tablename__ = "knowledge_nodes"
@@ -48,6 +52,10 @@ class KnowledgeNode(Base):
     )
     # ----------------------------------------------------
 
+    def __repr__(self) -> str:  # pragma: no cover - simple representation
+        """Return a readable representation for admin interfaces."""
+        return f"<KnowledgeNode id={self.id} title='{self.title}'>"
+
 
 class KnowledgeEdge(Base):
     __tablename__ = "knowledge_edges"
@@ -64,3 +72,10 @@ class KnowledgeEdge(Base):
     target_node: Mapped["KnowledgeNode"] = relationship(
         "KnowledgeNode", foreign_keys=[target_node_id], back_populates="incoming_edges"
     )
+
+    def __repr__(self) -> str:  # pragma: no cover - simple representation
+        """Return a readable representation for admin interfaces."""
+        return (
+            f"<KnowledgeEdge id={self.id} source={self.source_node_id} "
+            f"target={self.target_node_id} type='{self.relation_type}'>"
+        )
