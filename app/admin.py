@@ -15,6 +15,12 @@ from app.models.analytics.feedback_model import (
     FeedbackStatus,
 )
 from app.models.course.course_model import Course
+from app.models.course.level_model import Level
+from app.models.course.chapter_model import Chapter
+from app.models.course.vocabulary_item_model import VocabularyItem
+from app.models.course.grammar_rule_model import GrammarRule
+from app.models.course.knowledge_component_model import KnowledgeComponent
+from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.user.user_model import User
 
 
@@ -72,7 +78,7 @@ class AITokenLogAdmin(ModelView, model=AITokenLog):
     icon = "fa-solid fa-robot"
     column_list = [
         AITokenLog.id,
-        AITokenLog.user_id,
+        AITokenLog.user,
         AITokenLog.timestamp,
         AITokenLog.feature,
         AITokenLog.model_name,
@@ -80,6 +86,12 @@ class AITokenLogAdmin(ModelView, model=AITokenLog):
         AITokenLog.completion_tokens,
         AITokenLog.cost_usd,
     ]
+
+    column_formatters = {
+        AITokenLog.user: lambda m, a: m.user.username if m.user else "",
+    }
+
+    column_filters = [ForeignKeyFilter(AITokenLog.user_id, User.username, title="Utilisateur")]
     column_searchable_list = [AITokenLog.feature]
     can_create = True
     can_edit = True
@@ -144,6 +156,153 @@ class FeedbackAdmin(ModelView, model=ContentFeedback):
     can_delete = True
 
 
+class LevelAdmin(ModelView, model=Level):
+    """Admin view for course levels."""
+
+    name = "Niveau"
+    name_plural = "Niveaux"
+    icon = "fa-solid fa-layer-group"
+    column_list = [
+        Level.id,
+        Level.title,
+        Level.level_order,
+        Level.are_chapters_generated,
+        Level.course,
+    ]
+
+    column_formatters = {
+        Level.course: lambda m, a: m.course.title if m.course else "",
+    }
+
+    column_searchable_list = [Level.title]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class ChapterAdmin(ModelView, model=Chapter):
+    """Admin view for chapters."""
+
+    name = "Chapitre"
+    name_plural = "Chapitres"
+    icon = "fa-solid fa-book-open"
+    column_list = [
+        Chapter.id,
+        Chapter.title,
+        Chapter.chapter_order,
+        Chapter.lesson_status,
+        Chapter.exercises_status,
+        Chapter.level,
+    ]
+
+    column_formatters = {
+        Chapter.level: lambda m, a: m.level.title if m.level else "",
+    }
+
+    column_searchable_list = [Chapter.title]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class VocabularyItemAdmin(ModelView, model=VocabularyItem):
+    """Admin view for vocabulary items."""
+
+    name = "Vocabulaire"
+    name_plural = "Vocabulaire"
+    icon = "fa-solid fa-language"
+    column_list = [
+        VocabularyItem.id,
+        VocabularyItem.term,
+        VocabularyItem.translation,
+        VocabularyItem.pronunciation,
+        VocabularyItem.chapter,
+    ]
+
+    column_formatters = {
+        VocabularyItem.chapter: lambda m, a: m.chapter.title if m.chapter else "",
+    }
+
+    column_searchable_list = [VocabularyItem.term, VocabularyItem.translation]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class GrammarRuleAdmin(ModelView, model=GrammarRule):
+    """Admin view for grammar rules."""
+
+    name = "Règle de grammaire"
+    name_plural = "Règles de grammaire"
+    icon = "fa-solid fa-scroll"
+    column_list = [
+        GrammarRule.id,
+        GrammarRule.rule_name,
+        GrammarRule.explanation,
+        GrammarRule.example_sentence,
+        GrammarRule.chapter,
+    ]
+
+    column_formatters = {
+        GrammarRule.chapter: lambda m, a: m.chapter.title if m.chapter else "",
+    }
+
+    column_searchable_list = [GrammarRule.rule_name]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class KnowledgeComponentAdmin(ModelView, model=KnowledgeComponent):
+    """Admin view for knowledge components."""
+
+    name = "Composant de Connaissance"
+    name_plural = "Composants de Connaissance"
+    icon = "fa-solid fa-sitemap"
+    column_list = [
+        KnowledgeComponent.id,
+        KnowledgeComponent.title,
+        KnowledgeComponent.category,
+        KnowledgeComponent.component_type,
+        KnowledgeComponent.chapter,
+    ]
+
+    column_formatters = {
+        KnowledgeComponent.chapter: lambda m, a: m.chapter.title if m.chapter else "",
+    }
+
+    column_searchable_list = [KnowledgeComponent.title]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
+class UserCourseProgressAdmin(ModelView, model=UserCourseProgress):
+    """Admin view for user course progress."""
+
+    name = "Progression de Cours"
+    name_plural = "Progressions de Cours"
+    icon = "fa-solid fa-chart-line"
+    column_list = [
+        UserCourseProgress.user,
+        UserCourseProgress.course,
+        UserCourseProgress.status,
+        UserCourseProgress.current_level_order,
+        UserCourseProgress.current_chapter_order,
+        UserCourseProgress.last_geshtu_notification_at,
+    ]
+
+    column_formatters = {
+        UserCourseProgress.user: lambda m, a: m.user.username if m.user else "",
+        UserCourseProgress.course: lambda m, a: m.course.title if m.course else "",
+    }
+
+    column_searchable_list = [UserCourseProgress.status]
+    can_create = True
+    can_edit = True
+    can_delete = True
+
+
 def register_all_models(admin) -> None:
     """Register every SQLAlchemy model with the admin interface.
 
@@ -157,7 +316,18 @@ def register_all_models(admin) -> None:
         module = "app.models." + ".".join(path.relative_to(models_path).with_suffix("").parts)
         importlib.import_module(module)
 
-    excluded = {User, Course, AITokenLog, ContentFeedback}
+    excluded = {
+        User,
+        Course,
+        AITokenLog,
+        ContentFeedback,
+        Level,
+        Chapter,
+        VocabularyItem,
+        GrammarRule,
+        KnowledgeComponent,
+        UserCourseProgress,
+    }
 
     meta = type(ModelView)
     for mapper in Base.registry.mappers:
