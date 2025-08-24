@@ -24,6 +24,9 @@ class KnowledgeNode(BaseModel):
     content_json: Optional[Dict[str, Any]] = None # <-- 2. Rendre le champ optionnel
     exercises: List[NodeExercise] = []
 
+    is_completed: bool = False
+    is_unlocked: bool = False
+
     class Config:
         from_attributes = True
 

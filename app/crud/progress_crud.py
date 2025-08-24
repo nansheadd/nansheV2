@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from app.models.user import user_model
 from app.models.course import chapter_model
 from app.models.course import knowledge_component_model
@@ -6,6 +7,7 @@ from app.models.course import level_model
 from app.models.progress import user_answer_log_model
 from app.models.progress import user_course_progress_model
 from app.models.progress import user_knowledge_strength_model
+from app.models.progress.user_node_progress_model import UserNodeProgress
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 from datetime import datetime, timedelta, timezone
@@ -17,6 +19,25 @@ from app.core import ai_service
 
 logger = logging.getLogger(__name__)
 
+def mark_node_as_completed(db: Session, user_id: int, node_id: int):
+    """Marque un nœud de connaissance comme complété pour un utilisateur."""
+    progress = db.query(UserNodeProgress).filter_by(user_id=user_id, node_id=node_id).first()
+    
+    if not progress:
+        progress = UserNodeProgress(
+            user_id=user_id,
+            node_id=node_id,
+            is_completed=True,
+            completed_at= datetime.utcnow()
+        )
+        db.add(progress)
+    else:
+        progress.is_completed = True
+        progress.completed_at = datetime.utcnow()
+        
+    db.commit()
+    db.refresh(progress)
+    return progress
 
 def advance_progress(db: Session, user: user_model.User, chapter: chapter_model.Chapter):
     """Met à jour la progression de l'utilisateur après avoir terminé un chapitre."""

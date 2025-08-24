@@ -307,12 +307,19 @@ def _save_grammar(db: Session, chapter_id: int, grammar_data: list) -> list:
 def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_data: list):
     """Sauvegarde les données des exercices générés en BDD."""
     if not exercises_data:
-        raise ValueError("La génération des exercices a renvoyé une liste vide.")
+        logger.warning(f"La génération des exercices pour le chapitre {chapter.id} n'a retourné aucun exercice.")
+        return
+
     for data in exercises_data:
-        component = knowledge_graph_model.KnowledgeComponent(
+        # --- LA CORRECTION EST ICI ---
+        # On s'assure que la catégorie a TOUJOURS une valeur.
+        category = data.get("category") or chapter.title
+        # -------------------------
+
+        component = KnowledgeComponent(
             chapter_id=chapter.id,
             title=data.get("title", "Exercice sans titre"),
-            category=data.get("category", chapter.title),
+            category=category, # On utilise notre variable sécurisée
             component_type=data.get("component_type", "unknown"),
             bloom_level=data.get("bloom_level", "remember"),
             content_json=data.get("content_json", {})

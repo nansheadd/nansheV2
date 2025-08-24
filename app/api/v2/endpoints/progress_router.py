@@ -7,6 +7,7 @@ from app.crud import progress_crud
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
 from pydantic import BaseModel
+from datetime import datetime
 from typing import List, Dict
 
 router = APIRouter()
@@ -82,3 +83,16 @@ def mark_chapter_as_complete(
     progress_crud.advance_progress(db, user=current_user, chapter=chapter)
     
     return {"message": "Progress advanced successfully."}
+
+
+@router.post("/nodes/{node_id}/complete", status_code=201)
+def complete_knowledge_node(
+    node_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Marque un nœud de connaissance comme terminé pour l'utilisateur actuel."""
+    progress = progress_crud.mark_node_as_completed(db, user_id=current_user.id, node_id=node_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="Impossible de trouver le nœud ou l'utilisateur.")
+    return {"message": "Node marked as completed successfully."}

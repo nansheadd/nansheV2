@@ -6,10 +6,13 @@ from typing import List
 from app.schemas.progress import personalization_schema
 from app.schemas.course import vocabulary_schema
 from app.schemas.course import knowledge_graph_schema
+from app.schemas.course.knowledge_graph_schema import KnowledgeGraph
 from app.models.course.knowledge_graph_model import KnowledgeNode, KnowledgeEdge
 from app.models.course.vocabulary_item_model import VocabularyItem
 from app.models.course.chapter_model import Chapter
 from app.models.course.level_model import Level
+from app.models.course.course_model import Course
+from app.models.progress.user_node_progress_model import UserNodeProgress
 from app.core import ai_service
 from app.crud.course import course_crud
 from app.api.v2.dependencies import get_db, get_current_user
@@ -139,18 +142,39 @@ def read_course_knowledge_graph(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Récupère la structure complète du graphe de connaissances pour un cours.
-    """
-    course = course_crud.get_course(db, course_id=course_id)
+    course = db.get(Course, course_id)
     if not course or course.course_type != 'philosophie':
-        raise HTTPException(status_code=404, detail="Graphe de connaissances non trouvé pour ce cours.")
+        raise HTTPException(status_code=404, detail="Graphe de connaissances non trouvé.")
 
-    nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
-    edges = db.query(KnowledgeEdge).join(KnowledgeNode, KnowledgeEdge.source_node_id == KnowledgeNode.id).filter(KnowledgeNode.course_id == course_id).all()
+    nodes_from_db = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).order_by(KnowledgeNode.id).all()
+    edges_from_db = db.query(KnowledgeEdge).join(KnowledgeNode, KnowledgeEdge.source_node_id == KnowledgeNode.id).filter(KnowledgeNode.course_id == course_id).all()
 
-    return {
-        "course_title": course.title,
-        "nodes": nodes,
-        "edges": edges
-    }
+    completed_node_ids = {p.node_id for p in db.query(UserNodeProgress.node_id).filter(UserNodeProgress.user_id == current_user.id, UserNodeProgress.is_completed == True).all()}
+    
+    response_nodes = []
+    last_node_completed = True  # Débloque le premier nœud
+    for node in nodes_from_db:
+        is_completed = node.id in completed_node_ids
+        is_unlocked = last_node_completed
+        
+        # On construit explicitement un objet Pydantic pour garantir le format
+        response_node = knowledge_graph_schema.KnowledgeNode(
+            id=node.id,
+            course_id=node.course_id,
+            title=node.title,
+            node_type=node.node_type,
+            description=node.description,
+            content_json=node.content_json,
+            exercises=node.exercises,
+            is_completed=is_completed,
+            is_unlocked=is_unlocked
+        )
+        response_nodes.append(response_node)
+        
+        last_node_completed = is_completed
+
+    return knowledge_graph_schema.KnowledgeGraph(
+        course_title=course.title,
+        nodes=response_nodes,
+        edges=edges_from_db
+    )

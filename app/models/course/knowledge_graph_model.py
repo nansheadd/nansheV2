@@ -15,7 +15,7 @@ class NodeExercise(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     node_id: Mapped[int] = mapped_column(Integer, ForeignKey("knowledge_nodes.id"))
     
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
     component_type: Mapped[str] = mapped_column(String(50), nullable=False)
     content_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 

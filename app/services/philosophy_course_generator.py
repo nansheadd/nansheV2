@@ -1,16 +1,57 @@
 import logging
-from typing import List
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.models.user.user_model import User
 from app.models.course.course_model import Course
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.course.knowledge_graph_model import KnowledgeNode, KnowledgeEdge, NodeExercise
+from app.crud.course import course_crud
 from app.core import ai_service, prompt_manager
-from .tasks import generate_node_content_task
-
 from app.core.ai_service import get_text_embedding
 
 logger = logging.getLogger(__name__)
+
+
+def _map_ai_exercise_to_db_format(ai_exercise: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Transforme intelligemment un exercice au format de l'IA vers notre format de BDD.
+    Cette fonction est conçue pour être très flexible.
+    """
+    try:
+        # 1. Extraire le titre (il peut avoir plusieurs noms)
+        title = ai_exercise.get("title") or ai_exercise.get("titre") or ai_exercise.get("prompt") or ai_exercise.get("question") or ai_exercise.get("énoncé")
+
+        # 2. Extraire la consigne (le prompt pour l'étudiant)
+        prompt = ai_exercise.get("prompt") or ai_exercise.get("question") or ai_exercise.get("énoncé")
+
+        # 3. Traduire le type d'exercice de manière flexible
+        ai_type = ai_exercise.get("type", "").lower()
+        component_type = "unknown"
+        if "qcm" in ai_type or "multiple_choice" in ai_type:
+            component_type = "qcm"
+        elif "essay" in ai_type or "dissertation" in ai_type:
+            component_type = "essay"
+        elif "discussion" in ai_type or "débat" in ai_type or "critique" in ai_type:
+            component_type = "discussion"
+        elif "writing" in ai_type or "short_answer" in ai_type or "question courte" in ai_type:
+            component_type = "writing"
+        
+        # 4. Construire le content_json
+        content_json = {"prompt": prompt}
+        if component_type == "qcm":
+            content_json["choices"] = ai_exercise.get("options") or ai_exercise.get("choices")
+            content_json["answer"] = ai_exercise.get("answer") or ai_exercise.get("réponse_attendue")
+
+        # 5. Validation finale
+        if not title or component_type == "unknown" or not content_json.get("prompt"):
+            logger.warning(f"  -> Mapper : Exercice ignoré (infos essentielles manquantes). Données : {ai_exercise}")
+            return None
+
+        return {"title": str(title), "component_type": component_type, "content_json": content_json}
+    except Exception as e:
+        logger.error(f"  -> Mapper : Erreur de transformation. Erreur: {e}. Données : {ai_exercise}")
+        return None
+
 
 class PhilosophyCourseGenerator:
     """
@@ -22,11 +63,9 @@ class PhilosophyCourseGenerator:
         self.creator = creator
         self.model_choice = db_course.model_choice
 
-
-    def generate_full_course_graph(self): # Renommée pour plus de clarté
+    def generate_full_course_graph(self):
         """
-        Méthode principale qui génère la structure ET le contenu du graphe
-        de manière séquentielle au sein d'une seule tâche de fond.
+        Méthode principale qui génère la structure et le contenu du graphe.
         """
         try:
             logger.info(f"Génération du graphe pour '{self.db_course.title}'...")
@@ -34,21 +73,30 @@ class PhilosophyCourseGenerator:
             graph_data = self._generate_graph_structure()
             nodes = self._save_graph_structure(graph_data)
 
-            # On boucle directement ici, au sein de la même tâche
             for node in nodes:
-                self._generate_and_process_node_content(node)
+                try:
+                    self._generate_and_process_node_content(node)
+                except Exception as e:
+                    logger.error(f"  -> ÉCHEC du traitement pour le nœud '{node.title}' (ID: {node.id}). Erreur: {e}", exc_info=True)
+                    continue
 
-            # Mettre à jour le statut final du cours
             self.db_course.generation_status = "completed"
             self.db_course.generation_step = "Cours prêt !"
             self.db.commit()
 
+            logger.info(f"Inscription du créateur {self.creator.id} au cours de philosophie {self.db_course.id}...")
+            course_crud.enroll_user_in_course(
+                db=self.db, 
+                user_id=self.creator.id, 
+                course_id=self.db_course.id
+            )
+
             logger.info(f"Graphe et contenu pour '{self.db_course.title}' créés avec succès.")
             return self.db_course
 
-
         except Exception as e:
-            logger.error(f"Erreur majeure lors de la génération du graphe pour le cours '{self.db_course.title}': {e}", exc_info=True)
+            logger.error(f"Erreur majeure (structure du graphe) pour '{self.db_course.title}': {e}", exc_info=True)
+            self.db.rollback()
             self.db_course.generation_status = "failed"
             self.db.commit()
             return None
@@ -58,11 +106,10 @@ class PhilosophyCourseGenerator:
         logger.info("  -> Étape 1: Génération de la structure du graphe...")
         system_prompt = prompt_manager.get_prompt(
             "philosophy_generation.knowledge_graph",
-            title=self.db_course.title,
-            ensure_json=True
+            title=self.db_course.title
         )
         return ai_service._call_ai_model_json(
-            user_prompt=f"Génère le graphe de connaissances pour {self.db_course.title}",
+            user_prompt="Génère le graphe de connaissances.",
             model_choice=self.model_choice,
             system_prompt=system_prompt
         )
@@ -96,7 +143,6 @@ class PhilosophyCourseGenerator:
         for edge_data in edges_data:
             source_ai_id = edge_data.get("source")
             target_ai_id = edge_data.get("target")
-
             if source_ai_id in ai_id_to_db_id and target_ai_id in ai_id_to_db_id:
                 edge = KnowledgeEdge(
                     source_node_id=ai_id_to_db_id[source_ai_id],
@@ -104,53 +150,14 @@ class PhilosophyCourseGenerator:
                     relation_type=edge_data.get("relation_type")
                 )
                 self.db.add(edge)
-            else:
-                logger.warning(f"Arête ignorée car un de ses nœuds n'existe pas : {edge_data}")
         
         self.db.commit()
         return created_nodes
-
-    def _generate_exercises_for_node(self, node: KnowledgeNode, lesson_text: str):
-        logger.info(f"    -> Tentative de génération des exercices pour le nœud {node.id}...")
-        
-        system_prompt = prompt_manager.get_prompt(
-            "philosophy_generation.node_exercises",
-            lesson_text=lesson_text, node_title=node.title, ensure_json=True
-        )
-        exercises_data = ai_service._call_ai_model_json(
-            user_prompt="Génère les exercices pour cette leçon.",
-            model_choice=self.model_choice, system_prompt=system_prompt
-        )
-
-        # --- AJOUT DE LOGS ET DE VÉRIFICATIONS ---
-        if not exercises_data or "exercises" not in exercises_data or not isinstance(exercises_data["exercises"], list):
-            logger.warning(f"      -> L'IA n'a pas retourné une liste d'exercices valide pour le nœud {node.id}. Réponse reçue : {exercises_data}")
-            return # On quitte la fonction pour éviter une erreur
-
-        exercises_list = exercises_data.get("exercises", [])
-        logger.info(f"      -> {len(exercises_list)} exercices reçus de l'IA.")
-
-        for ex_data in exercises_list:
-            if not all(k in ex_data for k in ["title", "component_type", "content_json"]):
-                logger.warning(f"        -> Exercice ignoré car il manque des clés : {ex_data}")
-                continue
-
-            exercise = NodeExercise(
-                node_id=node.id, title=ex_data.get("title"),
-                component_type=ex_data.get("component_type"),
-                content_json=ex_data.get("content_json", {})
-            )
-            self.db.add(exercise)
-        
-        self.db.commit()
-        logger.info(f"      -> Exercices sauvegardés pour le nœud {node.id}.")
-
 
     def _generate_and_process_node_content(self, node: KnowledgeNode):
         """Génère le contenu, l'indexe et crée les exercices pour un nœud."""
         logger.info(f"  -> Étape 3: Traitement du nœud '{node.title}'...")
         
-        # Générer le contenu de la leçon
         system_prompt = prompt_manager.get_prompt(
             "philosophy_generation.node_content",
             title=node.title,
@@ -163,34 +170,26 @@ class PhilosophyCourseGenerator:
             model_choice=self.model_choice,
             system_prompt=system_prompt
         )
-        lesson_text = content_data.get("lesson_text", "")
+        lesson_text = content_data.get("lesson_text")
 
         if lesson_text:
             node.content_json = {"lesson_text": lesson_text}
             self.db.commit()
-
-            # Indexer le contenu dans la DB vectorielle
             self._index_node_content(node, lesson_text)
-            
-            # Générer les exercices basés sur la leçon
             self._generate_exercises_for_node(node, lesson_text)
         else:
             logger.warning(f"Aucun contenu de leçon généré pour le nœud {node.id}")
 
     def _index_node_content(self, node: KnowledgeNode, lesson_text: str):
         """Découpe une leçon en paragraphes et les indexe dans VectorStore."""
-        # The parameter is now correctly named `node`
         logger.info(f"    -> Indexation du contenu pour le nœud {node.id}...")
         if not lesson_text: return
 
-        chunks = [chunk.strip() for chunk in lesson_text.split('\n\n') if chunk.strip()]
+        chunks = [chunk.strip() for chunk in lesson_text.split('\n\n') if chunk.strip() and len(chunk) > 50]
         
         for chunk in chunks:
-            if len(chunk) < 50: continue
-            
             embedding = get_text_embedding(chunk)
             vector_entry = VectorStore(
-                # On passe `node.id` (l'entier) et non `node` (l'objet)
                 knowledge_node_id=node.id, 
                 chunk_text=chunk,
                 embedding=embedding
@@ -200,30 +199,35 @@ class PhilosophyCourseGenerator:
         self.db.commit()
         logger.info(f"      -> {len(chunks)} chunks indexés pour le nœud {node.id}.")
 
-        
     def _generate_exercises_for_node(self, node: KnowledgeNode, lesson_text: str):
         """Génère les exercices pour un nœud de connaissance."""
-        logger.info(f"    -> Génération des exercices pour le nœud {node.id}...")
+        logger.info(f"    -> Tentative de génération des exercices pour le nœud {node.id}...")
         
         system_prompt = prompt_manager.get_prompt(
             "philosophy_generation.node_exercises",
-            lesson_text=lesson_text,
             node_title=node.title,
+            lesson_text=lesson_text, # On injecte la leçon ici
             ensure_json=True
         )
+        
         exercises_data = ai_service._call_ai_model_json(
-            user_prompt="Génère les exercices pour cette leçon.",
+            user_prompt="Génère les exercices en te basant sur le contexte fourni.",
             model_choice=self.model_choice,
             system_prompt=system_prompt
         )
 
-        for ex_data in exercises_data.get("exercises", []):
-            exercise = NodeExercise(
-                node_id=node.id,
-                title=ex_data.get("title", "Exercice"),
-                component_type=ex_data.get("component_type", "unknown"),
-                content_json=ex_data.get("content_json", {})
-            )
-            self.db.add(exercise)
+        exercises_list = exercises_data.get("exercises", [])
+        if not exercises_list:
+            logger.warning(f"      -> L'IA n'a pas retourné de liste d'exercices pour le nœud {node.id}. Réponse : {exercises_data}")
+            return
+            
+        logger.info(f"      -> {len(exercises_list)} exercices reçus. Transformation et sauvegarde...")
+        saved_count = 0
+        for ai_exercise in exercises_list:
+            clean_exercise_data = _map_ai_exercise_to_db_format(ai_exercise)
+            if clean_exercise_data:
+                self.db.add(NodeExercise(node_id=node.id, **clean_exercise_data))
+                saved_count += 1
         
         self.db.commit()
+        logger.info(f"      -> {saved_count}/{len(exercises_list)} exercices ont été sauvegardés avec succès.")
