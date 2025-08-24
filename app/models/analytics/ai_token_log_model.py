@@ -1,14 +1,19 @@
 # Fichier: backend/app/models/analytics/ai_token_log_model.py (NOUVEAU)
 from sqlalchemy import Integer, String, DateTime, Float, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.user.user_model import User
 
 class AITokenLog(Base):
     __tablename__ = "ai_token_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    user: Mapped["User"] = relationship()
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     feature: Mapped[str] = mapped_column(String(100)) # Ex: 'coach', 'course_generation'
