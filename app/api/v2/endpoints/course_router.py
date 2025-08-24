@@ -20,9 +20,6 @@ from app.models.user.user_model import User
 
 router = APIRouter()
 
-# Fichier: backend/app/api/v2/endpoints/course_router.py (partiel)
-
-
 
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(

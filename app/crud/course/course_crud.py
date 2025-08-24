@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def create_course_shell(db: Session, course_in: course_schema.CourseCreate, creator: user_model.User) -> course_model.Course:
-    # Cette fonction ne change pas
     logger.info(f"Création de la coquille pour le cours '{course_in.title}' pour l'utilisateur {creator.id}")
     db_course = course_model.Course(
         title=course_in.title,

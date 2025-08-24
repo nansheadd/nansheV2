@@ -224,7 +224,7 @@ class PhilosophyCourseGenerator:
         logger.info(f"      -> {len(exercises_list)} exercices reçus. Transformation et sauvegarde...")
         saved_count = 0
         for ai_exercise in exercises_list:
-            clean_exercise_data = _map_ai_exercise_to_db_format(ai_exercise)
+            clean_exercise_data = ai_exercise
             if clean_exercise_data:
                 self.db.add(NodeExercise(node_id=node.id, **clean_exercise_data))
                 saved_count += 1
