@@ -1,6 +1,14 @@
 # Fichier: nanshe/backend/app/api/v2/api.py (CORRIGÉ)
 from fastapi import APIRouter
-from .endpoints import user_router, course_router, level_router, progress_router, chapter_router, toolbox_router, feedback_router,knowledge_node_router
+from .endpoints import (
+    user_router, course_router,
+    level_router, 
+    progress_router, 
+    chapter_router, 
+    toolbox_router, 
+    feedback_router,
+    knowledge_node_router,
+    execution_router,)
 
 api_router = APIRouter()
 
@@ -12,3 +20,4 @@ api_router.include_router(progress_router.router, prefix="/progress", tags=["Pro
 api_router.include_router(toolbox_router.router, prefix="/toolbox", tags=["Toolbox"])
 api_router.include_router(feedback_router.router, prefix="/feedback", tags=["Feedback"])
 api_router.include_router(knowledge_node_router.router, prefix="/nodes", tags=["nodes"])
+api_router.include_router(execution_router.router, prefix="/execution", tags=["Execution"]) # <-- Ajoutez cette ligne

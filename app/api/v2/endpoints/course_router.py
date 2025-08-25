@@ -17,9 +17,15 @@ from app.core import ai_service
 from app.crud.course import course_crud
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
+from app.models.analytics import training_example_model
+from app.schemas.analytics import training_example_schema
+from app.services.course_generator import CourseGenerator
+from pydantic import BaseModel
+import logging
 
 router = APIRouter()
-
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger("course_router")
 
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(
@@ -29,21 +35,68 @@ def create_new_course(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Étape 1 (Synchrone) : Crée la "coquille" du cours et renvoie son ID.
+    Étape 1 (Synchrone) : Crée la "coquille" du cours, sauvegarde l'exemple d'entraînement si fourni.
     Étape 2 (Asynchrone) : Lance la génération du plan de cours en arrière-plan.
     """
     # ÉTAPE 1 : On appelle une fonction qui crée JUSTE l'entrée en base de données.
     course = course_crud.create_course_shell(db=db, course_in=course_in, creator=current_user)
     
+    # --- NOUVEAU --- POINT DE COLLECTE POUR L'APPRENTISSAGE DU NLP
+    # Si le frontend envoie une catégorie corrigée par l'utilisateur, on la sauvegarde.
+    if course_in.corrected_category:
+        training_data = training_example_schema.TrainingExampleCreate(
+            input_text=course_in.title,
+            predicted_category=course_in.predicted_category,
+            corrected_category=course_in.corrected_category
+        )
+        example = training_example_model.TrainingExample(
+            **training_data.dict(),
+            user_id=current_user.id
+        )
+        db.add(example)
+        db.commit()
+        logger.info(f"Nouvel exemple d'entraînement sauvegardé : '{course_in.title}' -> '{course_in.corrected_category}'")
+    # ----------------------------------------------------------------
+
     # ÉTAPE 2 : On lance la tâche de fond avec l'ID que nous avons maintenant.
     background_tasks.add_task(
         course_crud.generate_course_plan_task,
         course_id=course.id,
-        creator_id=current_user.id
+        creator_id=current_user.id,
+        background_tasks=background_tasks
     )
     
     # ÉTAPE 3 : On renvoie l'objet cours avec son ID au frontend.
     return course
+
+
+class PredictionRequest(BaseModel):
+    title: str
+
+@router.post("/predict-category")
+def predict_course_category(
+    request: PredictionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Prédit la catégorie d'un cours à partir de son titre en utilisant le classifieur NLP.
+    """
+    # On instancie le générateur pour accéder à la méthode de classification.
+    # On a besoin d'un 'creator' et 'course_in' fictifs, car ils ne sont pas utiles pour la prédiction seule.
+    from app.schemas.course.course_schema import CourseCreate
+    
+    # NOTE: Cette instanciation est un peu lourde. À terme, la logique de classification
+    # pourrait être extraite dans un service plus léger. Pour l'instant, cela fonctionne.
+    temp_creator = db.query(User).first()
+    if not temp_creator:
+        raise HTTPException(status_code=500, detail="Aucun utilisateur trouvé pour initialiser le classifieur.")
+
+    temp_course_in = CourseCreate(title=request.title, model_choice="placeholder")
+    generator = CourseGenerator(db=db, course_in=temp_course_in, creator=temp_creator)
+    
+    category = generator._determine_course_type(request.title)
+    return {"category": category}
+
 
 @router.post("/personalization-form", response_model=personalization_schema.PersonalizationForm)
 def get_personalization_form(

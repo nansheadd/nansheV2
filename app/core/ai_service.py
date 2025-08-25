@@ -492,6 +492,48 @@ def generate_exercises_for_lesson(
         )
         return []
     
+# ==============================================================================
+# Fonctions de Génération de Contenu de Programmation
+# ==============================================================================
+
+def generate_coding_exercises_from_lesson(
+    lesson_text: str,
+    chapter_title: str,
+    model_choice: str
+) -> List[Dict[str, Any]]:
+    """
+    Génère des exercices de CODE (avec tests) à partir d'une leçon.
+    """
+    logger.info(f"Génération d'un exercice de CODE pour le chapitre '{chapter_title}'")
+    system_prompt = prompt_manager.get_prompt(
+        "coding_generation.node_exercises",
+        node_title=chapter_title,
+        lesson_text=lesson_text,
+        ensure_json=True
+    )
+    user_prompt = "Génère l'exercice de code maintenant."
+    
+    try:
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+        exercises = data.get("exercises", [])
+        
+        # Normalisation de la sortie pour être cohérente
+        norm = []
+        for ex in exercises:
+            if not isinstance(ex, dict) or "content_json" not in ex:
+                continue
+            norm.append({
+                "title": ex.get("title", "Exercice de code"),
+                "category": chapter_title,
+                "component_type": "code", # Forcé à 'code'
+                "bloom_level": ex.get("bloom_level", "apply"),
+                "content_json": ex["content_json"]
+            })
+        return norm
+    except Exception as e:
+        logger.error(f"Erreur de génération d'exercices de code pour '{chapter_title}': {e}", exc_info=True)
+        return []
+    
 
 # ==============================================================================
 # Fonctions Pédagogiques Spécifiques aux Langues

@@ -18,7 +18,9 @@ class CourseBase(BaseModel):
 class CourseCreate(BaseModel):
     """Ce que le frontend envoie pour créer un cours."""
     title: str
-    model_choice: str = "gemini" # 'gemini' est la valeur par défaut
+    model_choice: str = "gemini"
+    predicted_category: Optional[str] = None
+    corrected_category: Optional[str] = None
 
 
 class CourseInfo(BaseModel):

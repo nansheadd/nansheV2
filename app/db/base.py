@@ -1,4 +1,4 @@
-# Fichier : backend/app/db/base.py (Version Corrigée)
+# Fichier : backend/app/db/base.py (Version Corrigée et Complète)
 
 # --- Import de la classe de base ---
 from app.db.base_class import Base
@@ -21,7 +21,6 @@ from app.models.course.grammar_rule_model import GrammarRule
 from app.models.course.knowledge_component_model import KnowledgeComponent
 
 # 4. Nouveaux modèles de graphe de connaissances
-# --- MODIFICATION ICI ---
 from app.models.course.knowledge_graph_model import KnowledgeNode, KnowledgeEdge, NodeExercise
 
 # 5. Modèles de suivi et d'analyse (souvent les plus "enfants")
@@ -30,3 +29,4 @@ from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_topic_performance_model import UserTopicPerformance
 from app.models.analytics.golden_examples_model import GoldenExample
 from app.models.analytics.feedback_model import ContentFeedback
+from app.models.analytics.training_example_model import TrainingExample

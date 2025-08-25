@@ -1,4 +1,4 @@
-# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SQLADMIN ET PGVECTOR FIX)
+# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SEEDING INTÉGRÉ)
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,20 +12,16 @@ from app.core.security import verify_password
 from app.models.user.user_model import User
 from app.db.session import async_engine, SessionLocal
 
+# --- NOUVEAU --- Import pour le seeding
+from app.db.initial_data import seed_training_data
+# -----------------
+
 # Imports pour SQLAdmin
 from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
-from app.admin import (
-    AITokenLogAdmin,
-    CourseAdmin,
-    FeedbackAdmin,
-    UserAdmin,
-    register_all_models,
-)
+from app.admin import UserAdmin, CourseAdmin, AITokenLogAdmin, FeedbackAdmin
 
-# --- NOUVEL IMPORT ---
 from sqlalchemy import text
-# ---------------------
 
 # --- Configuration du logging ---
 logging.basicConfig(level=logging.INFO)
@@ -74,7 +70,6 @@ admin.add_view(UserAdmin)
 admin.add_view(CourseAdmin)
 admin.add_view(AITokenLogAdmin)
 admin.add_view(FeedbackAdmin)
-register_all_models(admin)
 app.include_router(api_router, prefix="/api/v2")
 
 
@@ -83,12 +78,19 @@ app.include_router(api_router, prefix="/api/v2")
 async def startup():
     logger.info("Vérification et création des tables de la base de données...")
     async with async_engine.begin() as conn:
-        # --- NOUVEAU BLOC ---
-        # On s'assure que l'extension pgvector est activée
         await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
-        # ---------------------
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Les tables de la base de données sont prêtes.")
+
+    # --- NOUVEAU BLOC DE SEEDING ---
+    # On exécute cette logique de manière synchrone après la création des tables.
+    logger.info("Vérification des données d'entraînement initiales...")
+    db = SessionLocal()
+    try:
+        seed_training_data(db)
+    finally:
+        db.close()
+    # ---------------------------------
 
 # --- Route Racine ---
 @app.get("/")

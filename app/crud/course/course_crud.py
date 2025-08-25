@@ -10,9 +10,12 @@ from app.models.progress import user_course_progress_model
 from app.schemas.course import course_schema
 from app.models.user.user_model import User
 from app.core.ai_service import generate_learning_plan, classify_course_topic
+
+from app.core import ai_service
+from app.services.course_generator import CourseGenerator 
 from app.services.language_course_generator import LanguageCourseGenerator
-from app.services.course_generator import CourseGenerator
 from app.services.philosophy_course_generator import PhilosophyCourseGenerator
+from app.services.programming_course_generator import ProgrammingCourseGenerator
 from app.models.course.knowledge_graph_model import KnowledgeNode
 import logging
 
@@ -33,60 +36,66 @@ def create_course_shell(db: Session, course_in: course_schema.CourseCreate, crea
     return db_course
 
 # TÂCHE DE FOND RENOMMÉE
-def generate_course_plan_task(course_id: int, creator_id: int): 
+def generate_course_plan_task(course_id: int, creator_id: int, background_tasks: BackgroundTasks):
     """
-    Tâche de fond qui classifie le cours, puis appelle le générateur approprié.
-    Elle gère sa propre session de base de données.
+    Tâche de fond qui classifie le cours avec le NLP, puis appelle le générateur approprié.
     """
-    # 3. CRÉER une nouvelle session de BDD propre à cette tâche
     db = SessionLocal()
     try:
-        logger.info(f"Tâche de fond : Démarrage de la planification pour le cours ID: {course_id}")
+        logger.info(f"Tâche de fond (ROUTEUR) : Démarrage pour le cours ID: {course_id}")
         db_course = db.get(course_model.Course, course_id)
-        if not db_course:
-            logger.error(f"Tâche annulée : cours {course_id} non trouvé.")
-            return
+        creator = db.get(user_model.User, creator_id)
+        
+        if not db_course or not creator:
+            logger.error(f"Tâche annulée : cours {course_id} ou créateur {creator_id} non trouvé."); return
 
-        # Le reste de la logique reste identique, mais utilise la session 'db' locale
         db_course.generation_status = "generating"
         db.commit()
 
-        course_type = classify_course_topic(title=db_course.title, model_choice=db_course.model_choice)
+        # --- 1. CLASSIFICATION FIABLE AVEC LE NLP ---
+        course_in_temp = course_schema.CourseCreate(title=db_course.title, model_choice=db_course.model_choice)
+        classifier = CourseGenerator(db=db, course_in=course_in_temp, creator=creator)
+        course_type = classifier._determine_course_type(db_course.title)
         db_course.course_type = course_type
+        
+        # --- 2. GÉNÉRATION DU PLAN (COMMUN À TOUS) ---
+        learning_plan = ai_service.generate_learning_plan(
+            title=db_course.title, course_type=course_type, model_choice=db_course.model_choice
+        )
+        db_course.learning_plan_json = learning_plan
         db.commit()
         
-        creator = db.get(user_model.User, creator_id)
-
-        if course_type == 'langue':
-            logger.info(f"Cours de langue détecté. Appel de LanguageCourseGenerator pour le cours ID: {course_id}")
+        # --- 3. AIGUILLAGE VERS LE BON GÉNÉRATEUR ---
+        logger.info(f"Aiguillage vers le générateur : '{course_type}'")
+        if course_type == 'language':
             generator = LanguageCourseGenerator(db=db, db_course=db_course, creator=creator)
             generator.generate_full_course_scaffold()
         
-        elif course_type == 'philosophie':
-            logger.info(f"Cours de philosophie détecté. Appel de PhilosophyCourseGenerator...")
-            # On n'a plus besoin de passer background_tasks ici
+        elif course_type == 'philosophy':
             generator = PhilosophyCourseGenerator(db=db, db_course=db_course, creator=creator)
-            # On appelle la méthode qui fait tout de manière séquentielle
-            generator.generate_full_course_graph()
+            generator.generate_full_course_graph(background_tasks=background_tasks)
 
-        else:
-            logger.info(f"Cours standard détecté. Appel du générateur générique pour le cours ID: {course_id}")
-            # La logique pour les cours génériques reste pour l'instant la même
-            generate_generic_course_plan(db, db_course, creator)
+        elif course_type == 'programming':
+            # --- APPEL DE VOTRE NOUVELLE CLASSE ---
+            generator = ProgrammingCourseGenerator(db=db, db_course=db_course, creator=creator, background_tasks=background_tasks)
+            generator.generate_full_course_scaffold()
+
+        else: # Cas 'generic'
+            # Le CourseGenerator gère lui-même le cas générique
+            generator = CourseGenerator(db=db, course_in=course_in_temp, creator=creator)
+            generator.db_course = db_course
+            generator.generate_full_course()
 
     except Exception as e:
-        logger.error(f"Erreur majeure lors de la génération du plan pour le cours ID {course_id}: {e}", exc_info=True)
+        logger.error(f"Erreur majeure dans le routeur de génération pour le cours ID {course_id}: {e}", exc_info=True)
         db.rollback()
-        # On doit re-récupérer l'objet dans la session en cas d'erreur avant de le modifier
         db_course_to_fail = db.get(course_model.Course, course_id)
         if db_course_to_fail:
             db_course_to_fail.generation_status = "failed"
-            db_course_to_fail.generation_step = "Une erreur est survenue"
-            db_course_to_fail.generation_progress = 0
             db.commit()
     finally:
-        # 4. S'ASSURER de toujours fermer la session à la fin
         db.close()
+
 
 def generate_generic_course_plan(db: Session, db_course: course_model.Course, creator: user_model.User):
     """
