@@ -13,6 +13,7 @@ from app.core.ai_service import generate_learning_plan, classify_course_topic
 from app.services.language_course_generator import LanguageCourseGenerator
 from app.services.course_generator import CourseGenerator
 from app.services.philosophy_course_generator import PhilosophyCourseGenerator
+from app.services.programming_course_generator import ProgrammingCourseGenerator
 from app.models.course.knowledge_graph_model import KnowledgeNode
 import logging
 
@@ -68,6 +69,19 @@ def generate_course_plan_task(course_id: int, creator_id: int):
             generator = PhilosophyCourseGenerator(db=db, db_course=db_course, creator=creator)
             # On appelle la méthode qui fait tout de manière séquentielle
             generator.generate_full_course_graph()
+        
+        elif course_type.lower() in ["programmation", "programming"]:
+            logger.info(f"Cours de programmation détecté. Appel de ProgrammingCourseGenerator...")
+            generator = ProgrammingCourseGenerator(db=db, course=db_course)
+            # On utilise asyncio.run car la méthode est asynchrone
+            import asyncio
+            asyncio.run(generator.generate_graph_structure())
+            # On n'oublie pas d'inscrire le créateur à la fin
+            # (tu pourrais créer une méthode partagée pour ça)
+            from app.models.progress.user_course_progress_model import UserCourseProgress
+            progress = UserCourseProgress(user_id=creator.id, course_id=db_course.id)
+            db.add(progress)
+            db.commit()
 
         else:
             logger.info(f"Cours standard détecté. Appel du générateur générique pour le cours ID: {course_id}")

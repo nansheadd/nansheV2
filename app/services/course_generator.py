@@ -5,11 +5,13 @@ from app.models.course import chapter_model
 from app.models.course import course_model
 from app.models.course import knowledge_graph_model
 from app.models.course import level_model
+from app.core import ai_service
 from sqlalchemy.orm import Session
 from app.models.progress import user_course_progress_model
-from app.core import ai_service
 from app.schemas.course import course_schema
 from typing import Dict, Any
+from app.services.programming_course_generator import ProgrammingCourseGenerator 
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +40,40 @@ class CourseGenerator:
             # 1. Créer l'entrée "brouillon" du cours en BDD
             self._create_initial_course_entry()
 
-            # 2. Générer le plan (description et niveaux)
+            # 2. Votre code - il devient notre point de décision
+            course_type = ai_service.classify_course_topic(title=self.db_course.title, model_choice=self.model_choice)
+            self.db_course.course_type = course_type
+            self.db.commit()
+            logger.info(f"  Type de cours détecté : {course_type}")
+
+            # 3. L'AIGUILLAGE : NOTRE SEULE MODIFICATION MAJEURE
+            # Si c'est de la programmation, on prend une route différente et on s'arrête là.
+            if course_type.lower() in ["programming", "programmation"]:
+
+                logger.info(" LORENZO Stratégie de génération par GRAPHE détectée. Lancement du générateur spécifique.")
+                prog_generator = ProgrammingCourseGenerator(db=self.db, course=self.db_course)
+                import asyncio
+                asyncio.run(prog_generator.generate_graph_structure()) # Cette méthode ne génère que le squelette
+                
+                self._enroll_creator() # On inscrit le créateur
+                self.db.commit()
+                logger.info(f"GÉNÉRATION GRAPHE : Structure créée pour le cours ID {self.db_course.id}")
+                return self.db_course
+            
+            # =================================================================
+            # SI CE N'EST PAS DE LA PROGRAMMATION, VOTRE CODE CONTINUE SANS AUCUN CHANGEMENT
+            # =================================================================
+            logger.info("  Stratégie de génération LINÉAIRE détectée. Continuation du pipeline.")
+            
+            # 4. Générer le plan (description et niveaux)
             learning_plan = self._generate_course_plan()
             self._apply_learning_plan(learning_plan)
             
-            # 3. Parcourir les niveaux et générer leurs chapitres
+            # 5. Parcourir les niveaux et générer leurs chapitres
             for level in self.db_course.levels:
                 self._generate_chapters_for_level(level)
 
-            # 4. Parcourir les chapitres et générer leur contenu
+            # 6. Parcourir les chapitres et générer leur contenu
             for level in self.db_course.levels:
                 for chapter in level.chapters:
                     self._generate_lesson_for_chapter(chapter)
@@ -54,7 +81,7 @@ class CourseGenerator:
                     if chapter.lesson_status == "completed":
                         self._generate_exercises_for_lesson(chapter)
             
-            # 5. Finaliser
+            # 7. Finaliser
             self.db_course.generation_status = "completed"
             self._enroll_creator() # Inscrire le créateur à son propre cours
             

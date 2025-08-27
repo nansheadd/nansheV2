@@ -1,10 +1,14 @@
 # Fichier à créer : backend/app/services/tasks.py
-
+import asyncio
 import logging
+
 from app.db.session import SessionLocal
+
 from app.models.user.user_model import User
 from app.models.course.knowledge_graph_model import KnowledgeNode
 from app.models.progress.user_course_progress_model import UserCourseProgress
+from app.services.programming_course_generator import ProgrammingCourseGenerator
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,5 +45,39 @@ def generate_node_content_task(node_id: int):
 
     except Exception as e:
         logger.error(f"Erreur dans la tâche de génération du contenu du nœud {node_id}: {e}", exc_info=True)
+    finally:
+        db.close()
+
+
+def generate_programming_node_content_task(node_id: int):
+    """
+    Tâche de fond pour générer le contenu (leçon + exercice)
+    pour un nœud de cours de programmation spécifique.
+    """
+    db = SessionLocal()
+    try:
+        # CORRECTION : On utilise une requête SQLAlchemy directe au lieu d'un crud inexistant
+        node = db.query(KnowledgeNode).filter(KnowledgeNode.id == node_id).first()
+        
+        if not node:
+            logger.error(f"TÂCHE JIT : Nœud ID {node_id} non trouvé.")
+            return
+
+        # On récupère le cours via la relation SQLAlchemy
+        course = node.course
+        if not course:
+            logger.error(f"TÂCHE JIT : Cours non trouvé pour le nœud ID {node_id}.")
+            return
+            
+        logger.info(f"TÂCHE JIT : Lancement de la génération pour le nœud '{node.title}' (ID: {node.id})")
+        
+        generator = ProgrammingCourseGenerator(db=db, course=course)
+        asyncio.run(generator.generate_node_content(node_id))
+        
+        logger.info(f"TÂCHE JIT : Génération terminée pour le nœud ID {node_id}.")
+
+    except Exception as e:
+        logger.error(f"Erreur dans la tâche de génération pour le noeud {node_id}: {e}", exc_info=True)
+        db.rollback()
     finally:
         db.close()

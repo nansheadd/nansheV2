@@ -21,6 +21,52 @@ from app.models.user.user_model import User
 router = APIRouter()
 
 
+@router.get(
+    "/{course_id}/knowledge-graph",
+    response_model=KnowledgeGraph,
+    summary="Récupérer le graphe de connaissances d'un cours"
+)
+def get_knowledge_graph_for_course(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Récupère tous les nœuds et arêtes pour un cours donné, 
+    ainsi que la progression de l'utilisateur sur ces nœuds.
+    """
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Cours non trouvé.")
+
+    # 1. Récupérer tous les nœuds du cours
+    nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+    
+    # 2. Récupérer toutes les arêtes (si nécessaire pour le frontend plus tard)
+    # edges = db.query(KnowledgeEdge).join(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+
+    # NOTE : La logique pour 'is_unlocked' et 'is_completed' est complexe et dépend
+    # de la progression de l'utilisateur. Pour l'instant, on débloque tout pour le test.
+    # Tu pourras ajouter la jointure avec la table de progression plus tard.
+    
+    formatted_nodes = []
+    for node in nodes:
+        formatted_nodes.append({
+            "id": node.id,
+            "title": node.title,
+            "node_type": node.node_type,
+            "content_json": node.content_json,
+            "is_unlocked": True, # Simplification pour le moment
+            "is_completed": False # Simplification pour le moment
+        })
+
+    return {
+        "course_title": course.title,
+        "nodes": formatted_nodes,
+        # "edges": edges # Tu peux décommenter si ton frontend en a besoin
+    }
+
+
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(
     course_in: course_schema.CourseCreate,
