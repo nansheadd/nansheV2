@@ -8,6 +8,7 @@ from app.schemas.course import vocabulary_schema
 from app.schemas.course import knowledge_graph_schema
 from app.schemas.course.knowledge_graph_schema import KnowledgeGraph
 from app.models.course.knowledge_graph_model import KnowledgeNode, KnowledgeEdge
+from app.schemas.course.knowledge_graph_schema import KnowledgeGraph
 from app.models.course.vocabulary_item_model import VocabularyItem
 from app.models.course.chapter_model import Chapter
 from app.models.course.level_model import Level
@@ -23,48 +24,67 @@ router = APIRouter()
 
 @router.get(
     "/{course_id}/knowledge-graph",
-    response_model=KnowledgeGraph,
+    response_model=KnowledgeGraph, # <-- On utilise ton schéma existant
     summary="Récupérer le graphe de connaissances d'un cours"
 )
-def get_knowledge_graph_for_course(
+def read_course_knowledge_graph(
     course_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Récupère tous les nœuds et arêtes pour un cours donné, 
+    Récupère tous les nœuds et arêtes pour un cours,
     ainsi que la progression de l'utilisateur sur ces nœuds.
     """
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Cours non trouvé.")
 
-    # 1. Récupérer tous les nœuds du cours
-    nodes = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+    # 1. Récupérer tous les nœuds du cours, triés par leur ID pour un ordre stable
+    nodes_from_db = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).order_by(KnowledgeNode.id).all()
     
-    # 2. Récupérer toutes les arêtes (si nécessaire pour le frontend plus tard)
-    # edges = db.query(KnowledgeEdge).join(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).all()
+    # 2. Récupérer les IDs de tous les nœuds que l'utilisateur a déjà complétés
+    completed_node_ids = {
+        progress.node_id for progress in 
+        db.query(UserNodeProgress.node_id).filter(
+            UserNodeProgress.user_id == current_user.id,
+            UserNodeProgress.is_completed == True
+        ).all()
+    }
 
-    # NOTE : La logique pour 'is_unlocked' et 'is_completed' est complexe et dépend
-    # de la progression de l'utilisateur. Pour l'instant, on débloque tout pour le test.
-    # Tu pourras ajouter la jointure avec la table de progression plus tard.
-    
-    formatted_nodes = []
-    for node in nodes:
-        formatted_nodes.append({
+    # 3. Déterminer quels nœuds sont débloqués
+    response_nodes = []
+    previous_node_was_completed = True # Le premier nœud est toujours débloqué
+    for node in nodes_from_db:
+        is_completed = node.id in completed_node_ids
+        is_unlocked = previous_node_was_completed
+        
+        # On ajoute le nœud formaté à notre liste de réponse
+        # Pydantic s'assurera que la structure est correcte
+        response_nodes.append({
             "id": node.id,
+            "course_id": node.course_id,
             "title": node.title,
             "node_type": node.node_type,
+            "description": node.description,
             "content_json": node.content_json,
-            "is_unlocked": True, # Simplification pour le moment
-            "is_completed": False # Simplification pour le moment
+            "exercises": node.exercises,
+            "is_completed": is_completed,
+            "is_unlocked": is_unlocked
         })
+        
+        # La condition pour débloquer le prochain nœud est que le nœud actuel soit complété
+        previous_node_was_completed = is_completed
 
-    return {
-        "course_title": course.title,
-        "nodes": formatted_nodes,
-        # "edges": edges # Tu peux décommenter si ton frontend en a besoin
-    }
+    # 4. Récupérer les arêtes (si tu veux les afficher un jour)
+    edges_from_db = db.query(KnowledgeEdge).join(KnowledgeNode, KnowledgeEdge.source_node_id == KnowledgeNode.id).filter(KnowledgeNode.course_id == course_id).all()
+
+    # On retourne l'objet final qui correspond à ton schéma `KnowledgeGraph`
+    return KnowledgeGraph(
+        course_title=course.title,
+        nodes=response_nodes,
+        edges=edges_from_db
+    )
 
 
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
