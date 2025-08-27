@@ -31,6 +31,7 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 MODEL_PRICING = {
     "gpt-5-mini-2025-08-07": {"input": 0.15, "output": 0.60},
+    "gemini-1.5-pro-latest": {"input": 3.50, "output": 10.00},
     # Ajoutez les autres modèles ici
 }
 
@@ -111,8 +112,11 @@ def call_ai_and_log(
     
     # Calculer le coût
     cost = 0.0
-    if model_choice in MODEL_PRICING:
-        prices = MODEL_PRICING[model_choice]
+    pricing_key = model_choice
+    if pricing_key not in MODEL_PRICING and pricing_key.startswith("gemini"):
+        pricing_key = "gemini-1.5-pro-latest"
+    if pricing_key in MODEL_PRICING:
+        prices = MODEL_PRICING[pricing_key]
         cost = ((prompt_tokens / 1_000_000) * prices["input"]) + \
                ((completion_tokens / 1_000_000) * prices["output"])
 
