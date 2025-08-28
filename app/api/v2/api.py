@@ -12,3 +12,5 @@ api_router.include_router(progress_router.router, prefix="/progress", tags=["Pro
 api_router.include_router(toolbox_router.router, prefix="/toolbox", tags=["Toolbox"])
 api_router.include_router(feedback_router.router, prefix="/feedback", tags=["Feedback"])
 api_router.include_router(knowledge_node_router.router, prefix="/nodes", tags=["nodes"])
+api_router.include_router(knowledge_node_router.router, prefix="/knowledge-nodes", tags=["Knowledge Nodes"])
+

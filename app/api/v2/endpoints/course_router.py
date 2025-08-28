@@ -2,7 +2,10 @@
 from app.schemas.course import course_schema
 from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List
+from collections import defaultdict
+from pydantic import BaseModel, Field
+
+from typing import Dict, List, Optional
 from app.schemas.progress import personalization_schema
 from app.schemas.course import vocabulary_schema
 from app.schemas.course import knowledge_graph_schema
@@ -21,71 +24,95 @@ from app.models.user.user_model import User
 
 router = APIRouter()
 
+class CourseSimple(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    icon_url: Optional[str] = None
+    course_type: str
+
+    class Config:
+        from_attributes = True
+
+class LibraryResponse(BaseModel):
+    categories: Dict[str, List[CourseSimple]]
+
+
 
 @router.get(
-    "/{course_id}/knowledge-graph",
-    response_model=KnowledgeGraph, # <-- On utilise ton schéma existant
-    summary="Récupérer le graphe de connaissances d'un cours"
+    "/library",
+    response_model=LibraryResponse,
+    summary="Récupérer tous les cours, groupés par catégorie" # Le sommaire est mis à jour
 )
+def get_courses_library(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retourne une liste de TOUS les cours, groupés par leur `course_type`.
+    """
+    # CORRECTION : On retire le .filter() pour tout récupérer
+    all_courses = db.query(Course).order_by(Course.id.desc()).all()
+    
+    categorized_courses = defaultdict(list)
+    for course in all_courses:
+        # On s'assure que le cours a un type avant de l'ajouter
+        if course.course_type:
+            simple_course = CourseSimple(
+                id=course.id,
+                title=course.title,
+                description=course.description,
+                icon_url=course.icon_url,
+                course_type=course.course_type
+            )
+            categorized_courses[course.course_type].append(simple_course)
+        
+    return {"categories": dict(categorized_courses)}
+
+
+@router.get("/{course_id}/knowledge-graph", response_model=knowledge_graph_schema.KnowledgeGraph)
 def read_course_knowledge_graph(
     course_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Récupère tous les nœuds et arêtes pour un cours,
-    ainsi que la progression de l'utilisateur sur ces nœuds.
-    """
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Cours non trouvé.")
+    course = db.get(Course, course_id)
+    # CORRECTION : On vérifie si le type est "philosophie" OU "programmation"
+    graph_types = ['philosophie', 'programmation']
+    if not course or course.course_type not in graph_types:
+        raise HTTPException(status_code=404, detail=f"Graphe de connaissances non disponible pour le type de cours '{course.course_type}'.")
 
-    # 1. Récupérer tous les nœuds du cours, triés par leur ID pour un ordre stable
     nodes_from_db = db.query(KnowledgeNode).filter(KnowledgeNode.course_id == course_id).order_by(KnowledgeNode.id).all()
-    
-    # 2. Récupérer les IDs de tous les nœuds que l'utilisateur a déjà complétés
-    completed_node_ids = {
-        progress.node_id for progress in 
-        db.query(UserNodeProgress.node_id).filter(
-            UserNodeProgress.user_id == current_user.id,
-            UserNodeProgress.is_completed == True
-        ).all()
-    }
-
-    # 3. Déterminer quels nœuds sont débloqués
-    response_nodes = []
-    previous_node_was_completed = True # Le premier nœud est toujours débloqué
-    for node in nodes_from_db:
-        is_completed = node.id in completed_node_ids
-        is_unlocked = previous_node_was_completed
-        
-        # On ajoute le nœud formaté à notre liste de réponse
-        # Pydantic s'assurera que la structure est correcte
-        response_nodes.append({
-            "id": node.id,
-            "course_id": node.course_id,
-            "title": node.title,
-            "node_type": node.node_type,
-            "description": node.description,
-            "content_json": node.content_json,
-            "exercises": node.exercises,
-            "is_completed": is_completed,
-            "is_unlocked": is_unlocked
-        })
-        
-        # La condition pour débloquer le prochain nœud est que le nœud actuel soit complété
-        previous_node_was_completed = is_completed
-
-    # 4. Récupérer les arêtes (si tu veux les afficher un jour)
     edges_from_db = db.query(KnowledgeEdge).join(KnowledgeNode, KnowledgeEdge.source_node_id == KnowledgeNode.id).filter(KnowledgeNode.course_id == course_id).all()
 
-    # On retourne l'objet final qui correspond à ton schéma `KnowledgeGraph`
-    return KnowledgeGraph(
+    completed_node_ids = {p.node_id for p in db.query(UserNodeProgress.node_id).filter(UserNodeProgress.user_id == current_user.id, UserNodeProgress.is_completed == True).all()}
+    
+    response_nodes = []
+    last_node_completed = True
+    for node in nodes_from_db:
+        is_completed = node.id in completed_node_ids
+        is_unlocked = last_node_completed
+        
+        response_node = knowledge_graph_schema.KnowledgeNode(
+            id=node.id,
+            course_id=node.course_id,
+            title=node.title,
+            node_type=node.node_type,
+            description=node.description or "",
+            content_json=node.content_json,
+            exercises=node.exercises,
+            is_completed=is_completed,
+            is_unlocked=is_unlocked
+        )
+        response_nodes.append(response_node)
+        
+        last_node_completed = is_completed
+
+    return knowledge_graph_schema.KnowledgeGraph(
         course_title=course.title,
         nodes=response_nodes,
         edges=edges_from_db
     )
-
 
 @router.post("/", response_model=course_schema.Course, status_code=status.HTTP_202_ACCEPTED)
 def create_new_course(
@@ -241,3 +268,4 @@ def read_course_knowledge_graph(
         nodes=response_nodes,
         edges=edges_from_db
     )
+
