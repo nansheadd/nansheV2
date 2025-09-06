@@ -1,0 +1,441 @@
+{
+  "languages": {
+    "foreign": [
+      "Japanese",
+      "Russian",
+      "Korean",
+      "Hebrew",
+      "Thai",
+      "Arabic",
+      "Greek",
+      "Hindi",
+      "Bengali",
+      "Tamil",
+      "Georgian",
+      "Armenian",
+      "Chinese"
+    ],
+    "regular": [
+      "English",
+      "Spanish",
+      "Portuguese",
+      "Italian",
+      "German",
+      "Dutch",
+      "Afrikaans",
+      "Swedish",
+      "Norwegian",
+      "Danish",
+      "Icelandic",
+      "Finnish",
+      "Estonian",
+      "Latvian",
+      "Lithuanian",
+      "Polish",
+      "Czech",
+      "Slovak",
+      "Slovene",
+      "Croatian",
+      "Bosnian",
+      "Serbian (Latin)",
+      "Montenegrin",
+      "Romanian",
+      "Hungarian",
+      "Turkish",
+      "Albanian",
+      "Maltese",
+      "Vietnamese",
+      "Indonesian",
+      "Malay",
+      "Filipino",
+      "Swahili",
+      "Hausa (Latin)",
+      "Yoruba (Latin)",
+      "Zulu",
+      "Xhosa",
+      "Quechua",
+      "Guarani",
+      "Haitian Creole",
+      "Esperanto"
+    ],
+    "old": [
+      "Latin",
+      "Ancient Greek",
+      "Old English",
+      "Classical Chinese",
+      "Sumerian (Cuneiform)",
+      "Akkadian (Cuneiform)",
+      "Hittite (Cuneiform)",
+      "Egyptian (Hieroglyphs)",
+      "Coptic",
+      "Sanskrit",
+      "Pali",
+      "Gothic",
+      "Old Norse",
+      "Old Church Slavonic",
+      "Classical Hebrew",
+      "Phoenician",
+      "Aramaic",
+      "Classical Maya (Hieroglyphs)"
+    ]
+  },
+  "social_sciences": {
+    "philosophy": [
+      "Stoicism",
+      "Epicureanism",
+      "Skepticism",
+      "Neoplatonism",
+      "Scholasticism",
+      "Rationalism",
+      "Empiricism",
+      "Spinozism",
+      "Kantianism",
+      "German Idealism",
+      "Marxism",
+      "Existentialism",
+      "Phenomenology",
+      "Analytic Philosophy",
+      "Pragmatism",
+      "Post-structuralism",
+      "Critical Theory"
+    ],
+    "history": [
+      "Prehistory",
+      "Ancient History",
+      "Classical Antiquity",
+      "Middle Ages",
+      "Renaissance",
+      "Early Modern Period",
+      "Enlightenment",
+      "Industrial Revolution",
+      "Contemporary History"
+    ],
+    "sociology": [
+      "Functionalism",
+      "Conflict Theory",
+      "Symbolic Interactionism",
+      "Structuralism",
+      "Critical Theory",
+      "Postmodernism",
+      "Systems Theory"
+    ],
+    "anthropology": [
+      "Cultural Anthropology",
+      "Biological Anthropology",
+      "Linguistic Anthropology",
+      "Social Anthropology",
+      "Archaeology",
+      "Symbolic Anthropology",
+      "Structural Anthropology"
+    ],
+    "economics": {
+      "schools": [
+        "Classical Economics",
+        "Marxian Economics",
+        "Keynesian Economics",
+        "Monetarism",
+        "Neoclassical Economics",
+        "Austrian School",
+        "Institutional Economics",
+        "Behavioral Economics",
+        "Post-Keynesian Economics",
+        "Modern Monetary Theory"
+      ]
+    },
+    "political_science": [
+      "Liberalism",
+      "Conservatism",
+      "Socialism",
+      "Communism",
+      "Anarchism",
+      "Fascism",
+      "Environmentalism",
+      "Feminism",
+      "Nationalism",
+      "Libertarianism"
+    ],
+    "linguistics": [
+      "Structuralism",
+      "Generativism",
+      "Functionalism",
+      "Cognitive Linguistics",
+      "Sociolinguistics",
+      "Historical Linguistics",
+      "Typology"
+    ],
+    "psychology": [
+      "Psychoanalysis",
+      "Behaviorism",
+      "Cognitivism",
+      "Humanistic Psychology",
+      "Gestalt Psychology",
+      "Evolutionary Psychology",
+      "Neuroscience Approach",
+      "Positive Psychology"
+    ],
+    "law": [
+      "Natural Law",
+      "Legal Positivism",
+      "Legal Realism",
+      "Critical Legal Studies",
+      "Law and Economics",
+      "Feminist Jurisprudence"
+    ],
+    "archaeology": [
+      "Prehistoric Archaeology",
+      "Classical Archaeology",
+      "Medieval Archaeology",
+      "Historical Archaeology",
+      "Industrial Archaeology",
+      "Experimental Archaeology"
+    ],
+    "cultural_studies": [
+      "Postcolonial Studies",
+      "Gender Studies",
+      "Media Studies",
+      "Subaltern Studies",
+      "Critical Theory",
+      "Postmodern Cultural Studies"
+    ]
+  },
+  "natural_sciences": {
+    "physics": [
+      "Classical Mechanics",
+      "Thermodynamics",
+      "Electromagnetism",
+      "Optics",
+      "Relativity",
+      "Quantum Mechanics",
+      "Particle Physics",
+      "Condensed Matter Physics",
+      "Nuclear Physics",
+      "Astrophysics"
+    ],
+    "biology": [
+      "Botany",
+      "Zoology",
+      "Microbiology",
+      "Genetics",
+      "Evolutionary Biology",
+      "Molecular Biology",
+      "Cell Biology",
+      "Ecology",
+      "Neurobiology"
+    ],
+    "chemistry": [
+      "Organic Chemistry",
+      "Inorganic Chemistry",
+      "Physical Chemistry",
+      "Biochemistry",
+      "Analytical Chemistry",
+      "Theoretical Chemistry"
+    ],
+    "earth_science": [
+      "Geology",
+      "Meteorology",
+      "Climatology",
+      "Oceanography",
+      "Paleontology",
+      "Hydrology",
+      "Volcanology",
+      "Seismology"
+    ],
+    "astronomy": [
+      "Planetary Science",
+      "Stellar Astronomy",
+      "Galactic Astronomy",
+      "Cosmology",
+      "Radio Astronomy",
+      "Observational Astronomy",
+      "Theoretical Astronomy"
+    ],
+    "environmental_science": [
+      "Conservation Biology",
+      "Sustainability Science",
+      "Pollution Studies",
+      "Climate Science",
+      "Ecosystem Studies"
+    ]
+  },
+  "mathematics": {
+    "algebra": [
+      "Linear Algebra",
+      "Abstract Algebra",
+      "Boolean Algebra",
+      "Homological Algebra"
+    ],
+    "geometry": [
+      "Euclidean Geometry",
+      "Non-Euclidean Geometry",
+      "Differential Geometry",
+      "Algebraic Geometry",
+      "Topology"
+    ],
+    "analysis": [
+      "Real Analysis",
+      "Complex Analysis",
+      "Functional Analysis",
+      "Numerical Analysis",
+      "Calculus"
+    ],
+    "statistics": [
+      "Descriptive Statistics",
+      "Inferential Statistics",
+      "Bayesian Statistics",
+      "Non-parametric Statistics"
+    ],
+    "probability": [
+      "Classical Probability",
+      "Frequentist Probability",
+      "Bayesian Probability",
+      "Stochastic Processes"
+    ],
+    "logic": [
+      "Propositional Logic",
+      "Predicate Logic",
+      "Modal Logic",
+      "Mathematical Logic"
+    ],
+    "number_theory": [
+      "Elementary Number Theory",
+      "Algebraic Number Theory",
+      "Analytic Number Theory"
+    ],
+    "discrete_mathematics": [
+      "Graph Theory",
+      "Combinatorics",
+      "Automata Theory",
+      "Cryptography"
+    ],
+    "applied_mathematics": [
+      "Mathematical Physics",
+      "Computational Mathematics",
+      "Operations Research",
+      "Mathematical Biology",
+      "Financial Mathematics"
+    ]
+  },
+  "methodologies": {
+    "scientific_method": [
+      "Observation",
+      "Hypothesis Formulation",
+      "Experimentation",
+      "Data Analysis",
+      "Theory Development",
+      "Replication",
+      "Peer Review"
+    ],
+    "qualitative_methods": [
+      "Interviews",
+      "Case Studies",
+      "Ethnography",
+      "Grounded Theory",
+      "Discourse Analysis"
+    ],
+    "quantitative_methods": [
+      "Survey Design",
+      "Statistical Inference",
+      "Regression Analysis",
+      "Experimental Design",
+      "Sampling Techniques"
+    ],
+    "meta_research": [
+      "Systematic Reviews",
+      "Meta-analysis",
+      "Reproducibility Studies",
+      "Pre-registration",
+      "Open Science"
+    ]
+  },
+  "personal_development": {
+    "core_topics": {
+      "goal_setting": [
+        "SMART Goals",
+        "OKRs",
+        "Backward Design"
+      ],
+      "time_management": [
+        "Pomodoro Technique",
+        "Eisenhower Matrix",
+        "Time Blocking",
+        "Getting Things Done (GTD)"
+      ],
+      "habits": [
+        "Habit Stacking",
+        "Keystone Habits",
+        "Cue-Routine-Reward Model"
+      ],
+      "focus": [
+        "Deep Work",
+        "Flow State",
+        "Mindfulness-Based Focus"
+      ],
+      "learning_strategies": [
+        "Spaced Repetition",
+        "Active Recall",
+        "Interleaving",
+        "Metacognition"
+      ],
+      "decision_making": [
+        "Pros and Cons Analysis",
+        "Decision Trees",
+        "Expected Utility",
+        "Bias Awareness"
+      ],
+      "emotional_intelligence": [
+        "Self-Awareness",
+        "Self-Regulation",
+        "Empathy",
+        "Social Skills"
+      ],
+      "stress_management": [
+        "Cognitive Reappraisal",
+        "Relaxation Techniques",
+        "Mindfulness",
+        "Resilience Training"
+      ]
+    }
+  },
+  "management": {
+    "core_topics": {
+      "leadership": [
+        "Transformational Leadership",
+        "Transactional Leadership",
+        "Servant Leadership",
+        "Situational Leadership"
+      ],
+      "strategic_management": [
+        "SWOT Analysis",
+        "Porter's Five Forces",
+        "Balanced Scorecard",
+        "Blue Ocean Strategy"
+      ],
+      "project_management": [
+        "Waterfall",
+        "Agile",
+        "Scrum",
+        "PRINCE2",
+        "Critical Path Method"
+      ],
+      "operations_management": [
+        "Lean",
+        "Six Sigma",
+        "Total Quality Management",
+        "Just-in-Time"
+      ],
+      "innovation_management": [
+        "Design Thinking",
+        "Disruptive Innovation",
+        "Open Innovation",
+        "Stage-Gate Process"
+      ],
+      "decision_making": [
+        "Rational Decision-Making",
+        "Bounded Rationality",
+        "Data-Driven Decision-Making",
+        "Consensus Decision-Making"
+      ]
+    }
+  },
+  "others": {}
+}

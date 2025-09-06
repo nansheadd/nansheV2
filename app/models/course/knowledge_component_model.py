@@ -1,4 +1,4 @@
-# Fichier: backend/app/models/knowledge_component_model.py (FINAL CORRIGÉ)
+# Fichier: backend/app/models/course/knowledge_component_model.py (FINAL MIS À JOUR)
 from sqlalchemy import Integer, String, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
@@ -15,7 +15,14 @@ class KnowledgeComponent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     chapter_id: Mapped[int] = mapped_column(Integer, ForeignKey("chapters.id"))
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str] = mapped_column(String(100), index=True, nullable=True)
+
+    # --- NOUVELLE TAXONOMIE ---
+    # Remplace l'ancien champ "category" pour une classification plus structurée.
+    domain: Mapped[str] = mapped_column(String(100), index=True, nullable=True)
+    area: Mapped[str] = mapped_column(String(100), index=True, nullable=True)
+    skill: Mapped[str] = mapped_column(String(100), index=True, nullable=True)
+    # --------------------------
+
     component_type: Mapped[str] = mapped_column(String(50), nullable=False)
     bloom_level: Mapped[str] = mapped_column(String(50))
     content_json: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)

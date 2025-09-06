@@ -27,5 +27,5 @@ class UserVocabularyStrength(Base):
     review_streak: Mapped[int] = mapped_column(Integer, default=0)
 
     # --- Relations ---
-    user: Mapped["User"] = relationship()
-    vocabulary_item: Mapped["VocabularyItem"] = relationship()
+    user: Mapped["User"] = relationship(back_populates="vocabulary_strengths")
+    vocabulary_item: Mapped["VocabularyItem"] = relationship(back_populates="user_strengths")

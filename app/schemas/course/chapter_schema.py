@@ -4,6 +4,7 @@ from typing import List, Optional
 from .knowledge_component_schema import KnowledgeComponent
 from .vocabulary_schema import VocabularyItem
 from .grammar_schema import GrammarRule
+from .character_schema import Character
 from .course_schema import CourseInfo
 
 class LevelForChapter(BaseModel):
@@ -24,6 +25,8 @@ class Chapter(BaseModel):
     exercises_status: str
     vocabulary_items: List[VocabularyItem] = []
     grammar_rules: List[GrammarRule] = []
+    characters: List[Character] = []
+    vocabulary: List[VocabularyItem] = []
     
     generation_step: Optional[str] = None
     generation_progress: Optional[int] = None

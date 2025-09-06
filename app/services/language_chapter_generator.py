@@ -27,6 +27,38 @@ _PRON_KEYS = (
     "phonetic", "phonetics", "pron"
 )
 
+def _find_similar_examples(db: Session, topic: str, language: str, content_type: str, limit: int = 3) -> str:
+    """
+    Cherche des exemples similaires dans la base vectorielle et les formate pour un prompt.
+    """
+    try:
+        # 1. Vectoriser le sujet de la recherche
+        topic_embedding = ai_service.get_text_embedding(topic)
+        
+        # 2. Exécuter la recherche par similarité dans la base de données
+        similar_examples = db.scalars(
+            select(VectorStore)
+            .filter(VectorStore.source_language == language)
+            .filter(VectorStore.content_type == content_type)
+            .order_by(VectorStore.embedding.l2_distance(topic_embedding))
+            .limit(limit)
+        ).all()
+        
+        if not similar_examples:
+            logger.info(f"Aucun exemple trouvé dans la base vectorielle pour le sujet '{topic}'.")
+            return ""
+
+        # 3. Formater les exemples pour les injecter dans le prompt de l'IA
+        context = "Voici quelques exemples de haute qualité pour t'inspirer. Suis leur style, leur ton et leur structure :\n\n"
+        for i, ex in enumerate(similar_examples):
+            context += f"--- EXEMPLE {i+1} ---\n{ex.chunk_text}\n\n"
+        
+        logger.info(f"{len(similar_examples)} exemples pertinents ont été trouvés pour le sujet '{topic}'.")
+        return context
+    except Exception as e:
+        logger.error(f"Erreur lors de la recherche d'exemples similaires pour '{topic}': {e}")
+        return ""
+    
 
 def _index_lesson_content(db: Session, chapter_id: int, lesson_text: str):
     """Chunks a lesson into paragraphs and indexes them in the vector store."""
@@ -190,15 +222,21 @@ def _normalize_grammar_for_db(chapter_id: int, rule: dict) -> dict:
     return payload
 
 def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapter, user: User):
-    """ Pipeline JIT qui s'adapte aux chapitres théoriques ou pratiques. """
+    """
+    Pipeline JIT qui génère le contenu d'un chapitre en utilisant le RAG
+    pour améliorer la vitesse et la qualité, tout en gérant les chapitres
+    théoriques et pratiques.
+    """
     try:
         logger.info(f"Pipeline JIT (Langue) : Démarrage pour le chapitre '{chapter.title}'")
         _update_chapter_progress(db, chapter, "Analyse du chapitre...", 5)
         course = chapter.level.course
+        course_language = course.title.replace("apprendre le ", "").strip().lower()
 
-        # --- NOUVEL AIGUILLAGE : CHAPITRE THÉORIQUE OU PRATIQUE ? ---
+        # --- AIGUILLAGE : CHAPITRE THÉORIQUE OU PRATIQUE ? ---
         if chapter.is_theoretical:
-            # --- PIPELINE POUR CHAPITRE THÉORIQUE (ex: Introduction) ---
+            # --- PIPELINE POUR CHAPITRE THÉORIQUE (Introduction, etc.) ---
+            # Le RAG est moins crucial ici car le sujet est très spécifique.
             logger.info(f"Chapitre théorique détecté pour '{chapter.title}'.")
             
             _update_chapter_progress(db, chapter, "Rédaction de la leçon théorique...", 20)
@@ -211,44 +249,59 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
             chapter.lesson_status = "completed"
             _update_chapter_progress(db, chapter, "Leçon terminée.", 70)
 
-            # Pour un chapitre théorique, il n'y a pas d'exercices à générer.
-            chapter.exercises_status = "completed"
+            chapter.exercises_status = "completed" # Pas d'exercices pour les chapitres théoriques
             _update_chapter_progress(db, chapter, "Finalisation...", 100)
 
         else:
-            # --- PIPELINE NORMALE POUR CHAPITRE PRATIQUE (celle que nous avons corrigée) ---
-            logger.info(f"Chapitre pratique détecté pour '{chapter.title}'.")
+            # --- PIPELINE AMÉLIORÉE AVEC RAG POUR CHAPITRE PRATIQUE ---
+            logger.info(f"Chapitre pratique détecté. Activation du RAG pour '{chapter.title}'.")
             
-            _update_chapter_progress(db, chapter, "Génération du vocabulaire...", 10)
+            # 1. RÉCUPÉRATION (Retrieval)
+            _update_chapter_progress(db, chapter, "Recherche d'exemples pertinents...", 10)
+            chapter_topic = f"Leçon sur : {chapter.title}"
+            # On cherche des exemples pour chaque type de contenu dont nous avons besoin
+            grammar_context = _find_similar_examples(db, chapter_topic, course_language, "grammar_rule", limit=3)
+            vocab_context = _find_similar_examples(db, chapter_topic, course_language, "vocabulary_set", limit=2)
+            rag_context = grammar_context + vocab_context
+
+            # 2. GÉNÉRATION AUGMENTÉE (Augmented Generation) - Vocabulaire et Grammaire
+            _update_chapter_progress(db, chapter, "Génération du vocabulaire et de la grammaire...", 20)
             pedagogical_content = ai_service.generate_language_pedagogical_content(
-                course_title=course.title, chapter_title=chapter.title, model_choice=course.model_choice
+                course_title=course.title, 
+                chapter_title=chapter.title, 
+                model_choice=course.model_choice,
+                rag_context=rag_context # Injection de nos exemples !
             )
             vocab_items = _save_vocabulary(db, chapter.id, pedagogical_content.get("vocabulary", []))
-            
-            _update_chapter_progress(db, chapter, "Génération de la grammaire...", 30)
             grammar_rules = _save_grammar(db, chapter.id, pedagogical_content.get("grammar", []))
 
-            _update_chapter_progress(db, chapter, "Création du dialogue...", 50)
+            # 3. GÉNÉRATION AUGMENTÉE - Dialogue
+            _update_chapter_progress(db, chapter, "Création d'un dialogue contextuel...", 50)
+            dialogue_context = _find_similar_examples(db, chapter_topic, course_language, "dialogue", limit=3)
             dialogue_text = ai_service.generate_language_dialogue(
                 course_title=course.title, chapter_title=chapter.title, vocabulary=vocab_items,
-                grammar=grammar_rules, model_choice=course.model_choice
+                grammar=grammar_rules, model_choice=course.model_choice,
+                rag_context=dialogue_context # On utilise le contexte spécifique aux dialogues
             )
-            chapter.lesson_text = dialogue_text # Pour l'instant, la leçon EST le dialogue. On pourra l'enrichir plus tard.
+            chapter.lesson_text = dialogue_text
             chapter.lesson_status = "completed"
             _update_chapter_progress(db, chapter, "Dialogue terminé.", 70)
 
-            _update_chapter_progress(db, chapter, "Préparation des exercices...", 80)
-            # Utilise notre logique corrigée sans RAG
+            # 4. GÉNÉRATION AUGMENTÉE - Exercices
+            _update_chapter_progress(db, chapter, "Préparation des exercices sur mesure...", 80)
+            exercise_context = _find_similar_examples(db, chapter_topic, course_language, "exercise", limit=4)
             system_prompt_exercises = ai_service.prompt_manager.get_prompt(
-                "generic_content.exercises",
+                "generic_content.exercises_rag", # On utilise un prompt qui accepte le RAG
                 course_type='langue',
                 chapter_title=chapter.title,
+                lesson_content=dialogue_text,
+                rag_context=exercise_context, # Injection des exemples d'exercices
                 ensure_json=True
             )
             exercises_data = ai_service.call_ai_and_log(
                 db=db, user=user, model_choice=course.model_choice,
-                system_prompt=system_prompt_exercises, user_prompt=dialogue_text,
-                feature_name="exercise_generation_direct_lang"
+                system_prompt=system_prompt_exercises, user_prompt="Génère les exercices en te basant sur la leçon et les exemples fournis.",
+                feature_name="exercise_generation_rag_lang"
             ).get("exercises", [])
             
             _save_exercises_data(db, chapter, exercises_data)
@@ -270,24 +323,47 @@ def generate_chapter_content_pipeline(db: Session, chapter: chapter_model.Chapte
                 chapter_to_fail.exercises_status = "failed"
                 db.commit()
 
+
 # --- Fonctions d'aide pour la sauvegarde en BDD ---
 
-def _save_vocabulary(db: Session, chapter_id: int, vocab_data: list) -> list:
-    items_for_ai = []
-    for item_data in (vocab_data or []):
+def _save_vocabulary(db: Session, chapter_id: int, vocabulary_data: List[Dict[str, Any]]) -> List[vocabulary_item_model.VocabularyItem]:
+    """
+    Sauvegarde le vocabulaire généré en base de données de manière robuste.
+    """
+    logger.info(f"      -> Sauvegarde de {len(vocabulary_data)} éléments de vocabulaire...")
+    created_items = []
+    for item_data in vocabulary_data:
         if not isinstance(item_data, dict):
-            item_data = {"term": str(item_data)}
+            logger.warning(f"Élément de vocabulaire invalide ignoré (n'est pas un dictionnaire): {item_data}")
+            continue
 
-        # Conserve la version IA pour les étapes suivantes (ids symboliques, etc.)
-        items_for_ai.append(item_data)
+        # V-- LA CORRECTION EST ICI --V
+        # On cherche le mot de vocabulaire sous plusieurs clés possibles.
+        word = item_data.get("word") or item_data.get("term") or item_data.get("expression")
 
-        # Normalise pour la DB (sans 'id' IA dans la PK)
-        payload = _normalize_vocab_for_db(chapter_id, item_data)
-        db_item = vocabulary_item_model.VocabularyItem(**payload)
+        # Si aucun mot n'est trouvé, on ignore cet élément pour éviter une erreur.
+        if not word:
+            logger.warning(f"Élément de vocabulaire invalide ignoré (clé 'word' ou 'term' manquante): {item_data}")
+            continue
+
+        db_item = vocabulary_item_model.VocabularyItem(
+            chapter_id=chapter_id,
+            word=word,
+            pinyin=item_data.get("pinyin") or item_data.get("pronunciation"),
+            translation=item_data.get("translation"),
+            # Ajout d'un champ optionnel pour plus de richesse
+            example_sentence=item_data.get("example_sentence") 
+        )
         db.add(db_item)
-
-    db.commit()
-    return items_for_ai
+        created_items.append(db_item)
+    
+    # On déplace le commit à l'extérieur de la boucle pour de meilleures performances
+    if created_items:
+        db.commit()
+        for item in created_items:
+            db.refresh(item)
+            
+    return created_items
 
 def _save_grammar(db: Session, chapter_id: int, grammar_data: list) -> list:
     rules_for_ai = []

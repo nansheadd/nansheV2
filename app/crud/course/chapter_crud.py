@@ -7,6 +7,10 @@ from app.models.course import level_model
 from app.models.user.user_model import User
 from app.services import language_chapter_generator
 from app.core.ai_service import generate_lesson_for_chapter, generate_exercises_for_lesson
+from app.models.course import chapter_model, character_model, vocabulary_item_model
+from app.models.progress import user_character_strength_model, user_vocabulary_strenght_model
+from typing import List
+
 
 
 logger = logging.getLogger(__name__)
@@ -123,6 +127,63 @@ def generate_exercises_task(db: Session, chapter_id: int, user_id: int): # <-- A
     db.commit()
 
 
+def generate_generic_chapter_content_task(db: Session, chapter_id: int, user_id: int):
+    """
+    Tâche de fond pour générer la leçon et les exercices d'un chapitre générique.
+    """
+    try:
+        chapter = db.get(chapter_model.Chapter, chapter_id)
+        if not chapter:
+            logger.error(f"[JIT Task] Chapitre {chapter_id} non trouvé.")
+            return
+
+        # 1. Générer la leçon
+        logger.info(f"[JIT Task] Génération de la leçon pour le chapitre '{chapter.title}'.")
+        lesson_text = generate_lesson_for_chapter(
+            chapter_title=chapter.title,
+            model_choice=chapter.level.course.model_choice
+        )
+        if not lesson_text:
+            raise ValueError("La génération de la leçon a échoué (contenu vide).")
+        
+        chapter.lesson_text = lesson_text
+        chapter.lesson_status = "completed"
+        db.commit()
+
+        # 2. Générer les exercices basés sur la leçon
+        logger.info(f"[JIT Task] Génération des exercices pour le chapitre '{chapter.title}'.")
+        exercises_data = generate_exercises_for_lesson(
+            lesson_text=chapter.lesson_text,
+            chapter_title=chapter.title,
+            model_choice=chapter.level.course.model_choice
+        )
+        if not exercises_data:
+            raise ValueError("La génération des exercices a échoué.")
+
+        for data in exercises_data:
+            component = knowledge_component_model.KnowledgeComponent(
+                chapter_id=chapter.id,
+                title=data.get("title", "Exercice"),
+                component_type=data.get("component_type", "unknown"),
+                content_json=data.get("content_json", {})
+            )
+            db.add(component)
+        
+        chapter.exercises_status = "completed"
+        db.commit()
+
+        logger.info(f"[JIT Task] Contenu généré avec succès pour le chapitre {chapter_id}")
+
+    except Exception as e:
+        logger.error(f"[JIT Task] Échec pour le chapitre {chapter_id}. Erreur: {e}", exc_info=True)
+        db.rollback()
+        chapter = db.get(chapter_model.Chapter, chapter_id)
+        if chapter:
+            chapter.lesson_status = "failed"
+            chapter.exercises_status = "failed"
+            db.commit()
+
+
 def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_data: list):
     """Sauvegarde les données des exercices générés en BDD."""
     if not exercises_data:
@@ -137,3 +198,21 @@ def _save_exercises_data(db: Session, chapter: chapter_model.Chapter, exercises_
             content_json=data.get("content_json", {})
         )
         db.add(component)
+
+def get_characters_with_strength(db: Session, chapter_id: int, user_id: int) -> List[character_model.Character]:
+    characters = db.query(character_model.Character).filter(character_model.Character.chapter_id == chapter_id).all()
+    strengths = db.query(user_character_strength_model.UserCharacterStrength).filter(user_character_strength_model.UserCharacterStrength.user_id == user_id).all()
+    strength_map = {s.character_id: s.strength for s in strengths}
+
+    for char in characters:
+        char.strength = strength_map.get(char.id, 0.0)
+    return characters
+
+def get_vocabulary_with_strength(db: Session, chapter_id: int, user_id: int) -> List[vocabulary_item_model.VocabularyItem]:
+    vocabulary = db.query(vocabulary_item_model.VocabularyItem).filter(vocabulary_item_model.VocabularyItem.chapter_id == chapter_id).all()
+    strengths = db.query(user_vocabulary_strenght_model.UserVocabularyStrength).filter(user_vocabulary_strenght_model.UserVocabularyStrength.user_id == user_id).all()
+    strength_map = {s.vocabulary_item_id: s.strength for s in strengths}
+
+    for item in vocabulary:
+        item.strength = strength_map.get(item.id, 0.0)
+    return vocabulary

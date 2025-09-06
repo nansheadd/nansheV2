@@ -1,0 +1,236 @@
+{
+  "overview": "Un cours complet pour apprendre le japonais, des alphabets de base à la lecture de textes complexes. Ce parcours progressif vous guidera à travers la grammaire, le vocabulaire et les kanji essentiels pour atteindre un niveau avancé.",
+  "levels": [
+    {
+      "level_title": "Level 0 — Alphabets",
+      "level_order": 0,
+      "chapters": [
+        { "chapter_title": "Hiragana (lecture + écriture)" },
+        { "chapter_title": "Katakana (lecture + écriture)" },
+        { "chapter_title": "Reconnaître les longues voyelles et sons spéciaux (ゃゅょ, っ, ー)" },
+        { "chapter_title": "Pratiquer des mots simples en kana (あさ, いえ, コンピュータ)" }
+      ]
+    },
+    {
+      "level_title": "Level 1 - Débutant",
+      "level_order": 1,
+      "chapters": [
+        { "chapter_title": "Salutations de base (こんにちは, ありがとう)" },
+        { "chapter_title": "Particules は, か (phrases simples affirmatives et questions)" },
+        { "chapter_title": "Lire et écrire des phrases ultra simples en hiragana" }
+      ]
+    },
+    {
+      "level_title": "Level 2 - Débutant",
+      "level_order": 2,
+      "chapters": [
+        { "chapter_title": "Présentations (わたしは…です)" },
+        { "chapter_title": "Particule の (possession)" },
+        { "chapter_title": "Nombres (1–100) en kanji (一, 二, 三)" },
+        { "chapter_title": "Lire petits dialogues écrits" }
+      ]
+    },
+    {
+      "level_title": "Level 3 - Débutant",
+      "level_order": 3,
+      "chapters": [
+        { "chapter_title": "Verbes de base au présent (たべる, のむ, いく, くる)" },
+        { "chapter_title": "Particules を, に, で" },
+        { "chapter_title": "Jours de la semaine (月, 火, 水, 木, 金, 土, 日)" },
+        { "chapter_title": "Lire petits textes (liste de courses, menus)" }
+      ]
+    },
+    {
+      "level_title": "Level 4 - Débutant",
+      "level_order": 4,
+      "chapters": [
+        { "chapter_title": "Adjectifs en -い et en -な" },
+        { "chapter_title": "Négation simple (〜ません, 〜ない)" },
+        { "chapter_title": "Kanji basiques (20–30 : 日, 月, 水, 山, 川, 人, 大, 小…)" },
+        { "chapter_title": "Lire petits textes narratifs" }
+      ]
+    },
+    {
+      "level_title": "Level 5 - Débutant",
+      "level_order": 5,
+      "chapters": [
+        { "chapter_title": "Verbes passés (ました / た)" },
+        { "chapter_title": "Questions avec どこ, だれ, なに" },
+        { "chapter_title": "Compteurs usuels (ひとつ, ふたつ, 三人)" },
+        { "chapter_title": "Lire mini dialogues narratifs" }
+      ]
+    },
+    {
+      "level_title": "Level 6 - Intermédiaire bas",
+      "level_order": 6,
+      "chapters": [
+        { "chapter_title": "Forme て (ている: actions en cours)" },
+        { "chapter_title": "Décrire sa journée" },
+        { "chapter_title": "+50 nouveaux kanji (食, 飲, 学, 校, 生…)" },
+        { "chapter_title": "Lire journaux scolaires et affiches" }
+      ]
+    },
+    {
+      "level_title": "Level 7 - Intermédiaire bas",
+      "level_order": 7,
+      "chapters": [
+        { "chapter_title": "Comparatifs (より, のほうが)" },
+        { "chapter_title": "Expressions de temps (とき, まえに, あとで)" },
+        { "chapter_title": "Lire phrases complexes avec plusieurs clauses" }
+      ]
+    },
+    {
+      "level_title": "Level 8 - Intermédiaire bas",
+      "level_order": 8,
+      "chapters": [
+        { "chapter_title": "Forme volitive (ましょう, たい)" },
+        { "chapter_title": "Introduction au keigo basique (ください, お〜ください)" },
+        { "chapter_title": "Lire mails et annonces" }
+      ]
+    },
+    {
+      "level_title": "Level 9 - Intermédiaire bas",
+      "level_order": 9,
+      "chapters": [
+        { "chapter_title": "Verbes potentiels (行ける, 見られる)" },
+        { "chapter_title": "Forme conditionnelle (〜たら, 〜なら)" },
+        { "chapter_title": "Lire mini-articles de presse facile" }
+      ]
+    },
+    {
+      "level_title": "Level 10 - Intermédiaire bas",
+      "level_order": 10,
+      "chapters": [
+        { "chapter_title": "Forme impérative + interdiction (なさい, するな)" },
+        { "chapter_title": "Discours rapporté (〜と言う)" },
+        { "chapter_title": "300 kanji maîtrisés" },
+        { "chapter_title": "Lire textes courts type blog, recettes" }
+      ]
+    },
+    {
+      "level_title": "Level 11 - Intermédiaire",
+      "level_order": 11,
+      "chapters": [
+        { "chapter_title": "Causatif (させる)" },
+        { "chapter_title": "Structure malgré (〜のに, 〜けど)" },
+        { "chapter_title": "Lire extraits de nouvelles" }
+      ]
+    },
+    {
+      "level_title": "Level 12 - Intermédiaire",
+      "level_order": 12,
+      "chapters": [
+        { "chapter_title": "Passif (される, られる)" },
+        { "chapter_title": "Expressions de nécessité et obligation (なければならない)" },
+        { "chapter_title": "Lire extraits de manuels" }
+      ]
+    },
+    {
+      "level_title": "Level 13 - Intermédiaire",
+      "level_order": 13,
+      "chapters": [
+        { "chapter_title": "Forme honorifique / humble (行く → いらっしゃる, 参る)" },
+        { "chapter_title": "Conjonctions complexes (すると, そこで, それなのに)" },
+        { "chapter_title": "Lire textes littéraires simples" }
+      ]
+    },
+    {
+      "level_title": "Level 14 - Intermédiaire",
+      "level_order": 14,
+      "chapters": [
+        { "chapter_title": "Expressions idiomatiques fréquentes (気をつける, 心配する)" },
+        { "chapter_title": "Premiers textes littéraires (haïku, contes pour enfants)" },
+        { "chapter_title": "600 kanji" }
+      ]
+    },
+    {
+      "level_title": "Level 15 - Intermédiaire",
+      "level_order": 15,
+      "chapters": [
+        { "chapter_title": "Expressions de probabilité et supposition (らしい, かもしれない)" },
+        { "chapter_title": "Lire essais scolaires" }
+      ]
+    },
+    {
+      "level_title": "Level 16 - Avancé",
+      "level_order": 16,
+      "chapters": [
+        { "chapter_title": "Structures formelles (である, 〜ことだ)" },
+        { "chapter_title": "Lire articles universitaires simples" }
+      ]
+    },
+    {
+      "level_title": "Level 17 - Avancé",
+      "level_order": 17,
+      "chapters": [
+        { "chapter_title": "Hypothétiques complexes (〜ば, 〜なら, 〜と)" },
+        { "chapter_title": "Lire romans jeunesse" }
+      ]
+    },
+    {
+      "level_title": "Level 18 - Avancé",
+      "level_order": 18,
+      "chapters": [
+        { "chapter_title": "Vocabulaire académique (政治, 経済, 社会, 歴史)" },
+        { "chapter_title": "Lire extraits universitaires" }
+      ]
+    },
+    {
+      "level_title": "Level 19 - Avancé",
+      "level_order": 19,
+      "chapters": [
+        { "chapter_title": "Proverbes et expressions figées (七転び八起き, 猫に小判)" },
+        { "chapter_title": "Lire articles de presse sérieux" }
+      ]
+    },
+    {
+      "level_title": "Level 20 - Avancé",
+      "level_order": 20,
+      "chapters": [
+        { "chapter_title": "Style écrit soutenu (〜であろう, 〜に違いない)" },
+        { "chapter_title": "Lire essais philosophiques simples" }
+      ]
+    },
+    {
+      "level_title": "Level 21 - Expert",
+      "level_order": 21,
+      "chapters": [
+        { "chapter_title": "Lecture critique de journaux (朝日新聞, 読売新聞)" },
+        { "chapter_title": "1000+ kanji" }
+      ]
+    },
+    {
+      "level_title": "Level 22 - Expert",
+      "level_order": 22,
+      "chapters": [
+        { "chapter_title": "Lire mangas sans furigana" },
+        { "chapter_title": "Langue familière écrite (slang, contractions)" }
+      ]
+    },
+    {
+      "level_title": "Level 23 - Expert",
+      "level_order": 23,
+      "chapters": [
+        { "chapter_title": "Lire littérature moderne (村上春樹, 川端康成)" },
+        { "chapter_title": "Compréhension des nuances stylistiques" }
+      ]
+    },
+    {
+      "level_title": "Level 24 - Expert",
+      "level_order": 24,
+      "chapters": [
+        { "chapter_title": "Lire textes spécialisés (sciences sociales, droit, économie)" },
+        { "chapter_title": "Utilisation fluide des dictionnaires monolingues" }
+      ]
+    },
+    {
+      "level_title": "Level 25 - Fluent",
+      "level_order": 25,
+      "chapters": [
+        { "chapter_title": "Lecture fluide de journaux, romans, essais et recherches" },
+        { "chapter_title": "Capacité à écrire des essais longs en japonais" },
+        { "chapter_title": "Maîtrise de ~2000 kanji (niveau JLPT N1 / proche natif)" }
+      ]
+    }
+  ]
+}

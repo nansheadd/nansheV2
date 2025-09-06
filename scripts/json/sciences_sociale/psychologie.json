@@ -1,0 +1,75 @@
+{
+  "psychologie": {
+    "fondateurs": [
+      {
+        "nom": "Philosophie & Médecine anciennes",
+        "periode": "Antiquité - XIXe siècle",
+        "figures_cles": ["Platon", "Aristote", "Hippocrate", "Descartes"],
+        "themes": ["âme/esprit", "perception", "émotions", "corps-esprit"],
+        "description": "La psychologie prend racine dans la philosophie et la médecine, comme réflexion sur l'âme, la conscience et le comportement humain."
+      }
+    ],
+    "courants_principaux": [
+      {
+        "nom": "Structuralisme",
+        "periode": "Fin XIXe - début XXe siècle",
+        "figures_cles": ["Wilhelm Wundt", "Edward Titchener"],
+        "themes": ["conscience", "introspection", "éléments mentaux"],
+        "description": "Première école de psychologie scientifique. Analyse de la conscience par introspection, en décomposant l’esprit en structures élémentaires.",
+        "decoule_de": ["Philosophie & Médecine anciennes"]
+      },
+      {
+        "nom": "Psychanalyse",
+        "periode": "Fin XIXe - XXe siècle",
+        "figures_cles": ["Sigmund Freud", "Carl Jung", "Jacques Lacan"],
+        "themes": ["inconscient", "désir", "rêves", "sexualité"],
+        "description": "Théorie et méthode clinique fondée sur l'exploration de l'inconscient. Mise en avant des conflits psychiques et du rôle du refoulement.",
+        "decoule_de": ["Philosophie & Médecine anciennes"],
+        "en_opposition_a": ["Structuralisme", "Behaviorisme"]
+      },
+      {
+        "nom": "Behaviorisme",
+        "periode": "XXe siècle (1910-1960)",
+        "figures_cles": ["John B. Watson", "B.F. Skinner"],
+        "themes": ["apprentissage", "conditionnement", "stimulus-réponse"],
+        "description": "Science du comportement observable. L’esprit est une boîte noire, seuls les comportements mesurables importent.",
+        "decoule_de": ["Structuralisme"],
+        "en_opposition_a": ["Psychanalyse"]
+      },
+      {
+        "nom": "Psychologie Humaniste",
+        "periode": "XXe siècle (1950-1980)",
+        "figures_cles": ["Carl Rogers", "Abraham Maslow"],
+        "themes": ["liberté", "potentiel humain", "accomplissement de soi"],
+        "description": "Réaction au behaviorisme et à la psychanalyse. Met l’accent sur la croissance personnelle, l’authenticité et l’expérience subjective.",
+        "decoule_de": ["Psychanalyse", "Behaviorisme"],
+        "en_opposition_a": ["Behaviorisme", "Psychanalyse"]
+      },
+      {
+        "nom": "Cognitivisme",
+        "periode": "XXe siècle (1950 - ...)",
+        "figures_cles": ["Jean Piaget", "Herbert Simon", "Ulric Neisser"],
+        "themes": ["mémoire", "langage", "raisonnement", "traitement de l’information"],
+        "description": "Révolution cognitive. L’esprit est vu comme un système de traitement de l’information. Étude des représentations mentales et processus cognitifs.",
+        "decoule_de": ["Behaviorisme"],
+        "en_opposition_a": ["Behaviorisme pur"]
+      },
+      {
+        "nom": "Neurosciences cognitives",
+        "periode": "XXe siècle (1980 - ...)",
+        "figures_cles": ["Antonio Damasio", "Michael Gazzaniga"],
+        "themes": ["cerveau", "plasticité", "conscience"],
+        "description": "Étudie les bases neuronales des processus mentaux grâce aux nouvelles technologies (IRM, électrophysiologie).",
+        "decoule_de": ["Cognitivisme", "Psychologie biologique"]
+      },
+      {
+        "nom": "Psychologie Positive",
+        "periode": "XXIe siècle",
+        "figures_cles": ["Martin Seligman", "Mihaly Csikszentmihalyi"],
+        "themes": ["bonheur", "émotions positives", "résilience"],
+        "description": "Approche récente centrée sur le bien-être, les forces individuelles et la résilience plutôt que les pathologies.",
+        "decoule_de": ["Psychologie Humaniste"]
+      }
+    ]
+  }
+}

@@ -45,5 +45,24 @@ class Course(CourseBase):
     class Config:
         from_attributes = True
 
+
+class CourseReadMinimal(BaseModel):
+    """
+    Schéma de réponse minimal pour la création de cours en tâche de fond (réponse 202).
+    Fournit juste assez d'infos pour que le frontend puisse rediriger et suivre la génération.
+    """
+    id: int
+    title: str
+    generation_status: str
+
+    class Config:
+        from_attributes = True
+
+class CourseInfo(BaseModel):
+    course_type: str
+    class Config:
+        from_attributes = True
+
+        
 from .level_schema import Level
 Course.model_rebuild()

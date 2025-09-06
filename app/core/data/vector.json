@@ -1,0 +1,946 @@
+[
+  {
+    "language": "japonais",
+    "content_type": "pronunciation_guide",
+    "metadata": {
+      "topic": "Voyelles, consonnes, voyelles longues, sokuon",
+      "level": "débutant"
+    },
+    "text": "Le japonais a 5 voyelles: a, i, u, e, o. Les voyelles longues (aa, ii, uu, ee, oo/ou) allongent la durée: おばさん (obasan, tante) vs おばあさん (obāsan, grand-mère). Le sokuon っ double la consonne: きって (kitte, timbre)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "pronunciation_guide",
+    "metadata": {
+      "topic": "Pitch accent (aperçu)",
+      "level": "débutant"
+    },
+    "text": "Le pitch accent détermine la mélodie du mot. さくら (sakura) est heiban (pas de chute). はし a deux sens: 橋 (pont, chute après し) vs 箸 (baguettes, chute après は)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "writing_system",
+    "metadata": {
+      "topic": "Kana et kanji",
+      "level": "débutant"
+    },
+    "text": "Le japonais s'écrit avec hiragana (ひらがな), katakana (カタカナ) et kanji (漢字). Hiragana pour la grammaire et les mots natifs; katakana pour les emprunts; kanji pour les racines lexicales."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Démonstratifs これ/それ/あれ/どれ"
+    },
+    "text": "これ: ceci (près du locuteur). それ: cela (près de l'interlocuteur). あれ: cela là-bas (loin des deux). どれ: lequel (parmi plusieurs)? Ex: これは何ですか。— それはペンです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "La copule です (politesse)"
+    },
+    "text": "X は Y です indique l'identité/description. Ex: 私は学生です (Je suis étudiant). Négation: ではありません / じゃありません. Passé: でした; Négation passée: ではありませんでした."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Particule は (thème) vs が (sujet)"
+    },
+    "text": "は marque le thème: 今日は暑いです (Aujourd'hui, il fait chaud). が introduit un nouveau sujet ou met l'accent: 猫が好きです (J'aime les chats [c'est les chats que j'aime])."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Particules を, に, で, へ, と, の, も"
+    },
+    "text": "を: objet direct (パンを食べる). に: destination/temps/existence (学校に行く, 3時に, 机の上に本がある). で: lieu d'action/moyen (図書館で勉強する, バスで行く). へ: direction (東京へ). と: et/avec (友だちと). の: possession/nominalisation. も: aussi (私も学生です)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_example",
+    "metadata": {
+      "word": "こんにちは",
+      "reading": "konnichiwa",
+      "translation": "Bonjour",
+      "register": "poli"
+    },
+    "text": "こんにちは、田中さん。— Bonjour, M. Tanaka."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_example",
+    "metadata": {
+      "word": "すみません",
+      "reading": "sumimasen",
+      "translation": "Pardon/Excusez-moi/Merci (selon contexte)"
+    },
+    "text": "すみません、道を教えてください。— Excusez-moi, pouvez-vous m'indiquer le chemin ?"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_example",
+    "metadata": {
+      "word": "お願いします",
+      "reading": "onegaishimasu",
+      "translation": "S'il vous plaît (demande formelle)"
+    },
+    "text": "水をお願いします。— De l'eau, s'il vous plaît."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Adjectifs en い et en な"
+    },
+    "text": "い-adj: たかい (haut/cher) → たかくない (pas cher), たかかった (était cher), たかくなかった (n'était pas cher). な-adj: しずかな (calme) → しずかじゃない, しずかでした, しずかじゃなかった. 用法 avec です en style poli."
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Se présenter",
+      "can_do": "Dire son nom et sa nationalité"
+    },
+    "text": "A: はじめまして。田中です。どうぞよろしくお願いします。\nB: はじめまして。マリーと申します。フランスから来ました。よろしくお願いします。\n— A: Enchanté. Je suis Tanaka. / B: Enchantée, je m'appelle Marie. Je viens de France."
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Au café",
+      "can_do": "Commander poliment"
+    },
+    "text": "店員: いらっしゃいませ。ご注文は？\n客: コーヒーを一つお願いします。\n店員: 砂糖とミルクは？\n客: 砂糖はなしで、ミルクを少しください。\n— Serveur: Bienvenue. Votre commande ? / Client: Un café, s'il vous plaît. / Sucre et lait ? / Pas de sucre, un peu de lait."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Compter (〜つ et 人)"
+    },
+    "text": "Général (〜つ): ひとつ, ふたつ, みっつ, よっつ, いつつ, むっつ, ななつ, やっつ, ここのつ, とお. Personnes (〜人): ひとり, ふたり, さんにん, よにん... Ex: りんごを三つ買いました。家族は四人です。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Verbes: forme -ます (présent/poli)"
+    },
+    "text": "Groupe 1 (五段): 書きます, 飲みます. Groupe 2 (一段): 食べます, 見ます. Irréguliers: します, 来ます (きます). Négation: 〜ません; Passé: 〜ました; Négation passée: 〜ませんでした."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Forme en て et usages"
+    },
+    "text": "Formation: 書いて, 読んで, 行って, 食べて, して, きて. Usages: 1) Suite d'actions: 朝ごはんを食べて、学校に行きます。2) Demande: 窓を開けてください。3) Permission: 写真を撮ってもいいですか。4) Interdiction: ここで吸ってはいけません。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Acheter un billet de train",
+      "can_do": "Demander un aller simple/retour"
+    },
+    "text": "客: 東京まで大人一枚、片道お願いします。\n駅員: 片道でよろしいですか。\n客: はい、お願いします。\n— Client: Un billet adulte pour Tokyo, aller simple s'il vous plaît. / Employé: Bien aller simple ? / Oui, s'il vous plaît."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Existence: ある / いる"
+    },
+    "text": "ある pour les choses inanimées; いる pour les êtres animés. Ex: 公園に猫がいます。机の上に本があります。— Il y a un chat au parc. Il y a un livre sur le bureau."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Temps et heures"
+    },
+    "text": "Dire l'heure: 1時 (いちじ), 2時半 (にじはん). Minutes: 1分(いっぷん), 3分(さんぷん), 6分(ろっぷん), 10分(じゅっぷん). Ex: 会議は3時15分からです。— La réunion commence à 3h15."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Jours et dates"
+    },
+    "text": "Aujourd'hui 今日, demain 明日, hier 昨日. Jours du mois: ついたち(1er), ふつか(2), みっか(3)... はつか(20), にじゅうよっか(24). Ex: 誕生日は五月二十日です。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Aimer / détester: 好き / 嫌い"
+    },
+    "text": "N が好きです: J'aime N. N が嫌いです: Je déteste N. Sujet implicite は peut changer le focus: 私は日本語が好きです。— Moi, j'aime le japonais. Intensité: 大好き, あまり好きじゃない。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Désir: 〜たい / 欲しい"
+    },
+    "text": "Verbe en -ます → -たい: 日本へ行きたいです (je veux aller au Japon). Objet désiré: N が欲しいです (je veux N). 欲しい ne s'emploie pas pour le désir d'autrui (utiliser たがる)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Faire des courses",
+      "can_do": "Demander le prix, négocier poliment"
+    },
+    "text": "客: これはいくらですか。\n店員: 2500円です。\n客: もう少し安くなりませんか。\n店員: では、2000円でどうですか。\n— Combien ça coûte ? 2500 yens. Vous ne pouvez pas baisser un peu ? Alors, 2000 yens, ça vous va ?"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Famille (内/外)"
+    },
+    "text": "Ma famille (内): 母, 父, 姉, 弟. Famille d'autrui (外): お母さん, お父さん, お姉さん, 弟さん. Ex: 母は先生です。山田さんのお母さんは元気ですか。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Progressif 〜ている"
+    },
+    "text": "Action en cours: 今、映画を見ています。État résultant: 結婚しています (être marié). Habitude (avec adverbes): 毎朝ジョギングをしています。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Comparaison: より / ほど / 一番"
+    },
+    "text": "A は B より高い: A est plus cher que B. A は B ほど安くない: A n'est pas aussi bon marché que B. 一番: superlatif. この店が一番好きです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Demander son chemin",
+      "can_do": "Comprendre des indications simples"
+    },
+    "text": "A: すみません、駅はどこですか。\nB: この道をまっすぐ行って、二つ目の信号を右に曲がってください。\nA: ありがとうございます。\n— Excusez‑moi, où est la gare ? Allez tout droit, tournez à droite au 2e feu. Merci."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Parce que: 〜から / ので"
+    },
+    "text": "Raison subjective/quotidienne: 〜から. Raison plus neutre/polie: 〜ので. 雨だから、出かけません。/ 雨なので、出かけません。— Il pleut, donc je ne sors pas."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Mais: が / けど"
+    },
+    "text": "が est plus formel: 好きですが、高いです。けど est plus conversationnel: 行きたいけど、時間がない。— J'aimerais y aller, mais je n'ai pas le temps."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_example",
+    "metadata": {
+      "word": "きれい",
+      "reading": "kirei",
+      "pos": "adjectif en な",
+      "translation": "beau/propre"
+    },
+    "text": "この部屋はきれいです。— Cette pièce est propre/jolie. (注意: en な)"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "metadata": {
+      "type": "transformations",
+      "target": "forme en て",
+      "solutions": true
+    },
+    "text": "Mettez au 〜て: 読む→読んで, 書く→書いて, 泳ぐ→泳いで, 行く→行って, 話す→話して, する→して, 来る→きて."
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "metadata": {
+      "type": "traduction",
+      "level": "N5-N4",
+      "solutions": true
+    },
+    "text": "Traduisez: 1) Je n'ai pas de temps aujourd'hui. → 今日は時間がありません。2) Est‑ce que je peux prendre des photos ici ? → ここで写真を撮ってもいいですか。3) J'ai mangé du poisson et bu du thé. → 魚を食べて、お茶を飲みました。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Potentiel (capacité)"
+    },
+    "text": "食べる→食べられる, 行く→行ける, 読む→読める, する→できる, 来る→来られる/これる (oral). Ex: 日本語が少し話せます。— Je peux parler un peu japonais."
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Au restaurant",
+      "can_do": "Commander, demander l'addition"
+    },
+    "text": "客: すみません、注文いいですか。\n店員: はい、どうぞ。\n客: 天ぷら定食をお願いします。\n(食後) 客: お会計お願いします。\n— Excusez‑moi, je peux commander ? Oui. Un menu tempura, s'il vous plaît. L'addition, s'il vous plaît."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Obligation: 〜なければならない / 〜いけない"
+    },
+    "text": "宿題をしなければなりません / しなきゃいけない (familier). Négation (pas besoin): 〜なくてもいい. 今日は行かなくてもいいです。— Pas besoin d'y aller aujourd'hui."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Verbes utiles (ます形)"
+    },
+    "text": "行きます (aller), 来ます (venir), 帰ります (rentrer), 見ます (voir), 見せます (montrer), 聞きます (écouter/demander), 言います (dire), 買います (acheter), 使います (utiliser), 勉強します (étudier)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "culture_note",
+    "metadata": {
+      "topic": "Niveaux de politesse"
+    },
+    "text": "Trois grands registres: neutre (話す), poli (話します), honorifique/ humble (いらっしゃる/参ります). En contexte quotidien, le style です/ます suffit."
+  },
+  {
+    "language": "japonais",
+    "content_type": "kanji_entry",
+    "metadata": {
+      "kanji": "日",
+      "readings_on": ["ニチ", "ジツ"],
+      "readings_kun": ["ひ", "か"],
+      "meaning_fr": "jour, soleil",
+      "jlpt": "N5"
+    },
+    "text": "Ex: 日本 (にほん, Japon), 日曜日 (にちようび, dimanche), 休日 (きゅうじつ, jour férié)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "kanji_entry",
+    "metadata": {
+      "kanji": "人",
+      "readings_on": ["ジン", "ニン"],
+      "readings_kun": ["ひと"],
+      "meaning_fr": "personne",
+      "jlpt": "N5"
+    },
+    "text": "Ex: 日本人 (にほんじん, Japonais), 三人 (さんにん, trois personnes), 人口 (じんこう, population)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Comparaison d'expérience: 〜たことがある"
+    },
+    "text": "日本に行ったことがありますか。— Avez‑vous déjà été au Japon ? はい、あります / いいえ、ありません。Verbes au passé court + ことがある pour exprimer l'expérience vécue."
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "metadata": {
+      "type": "cloze",
+      "focus": "particules"
+    },
+    "text": "Complétez: 私__日本語__勉強します。→ 私は日本語を勉強します。\n机__上__本__あります。→ 机の上に本があります。\n田中さん__来ますか。→ 田中さんは来ますか。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Conditionnels と / たら / なら (aperçu)"
+    },
+    "text": "と: résultat automatique (春になると暖かくなる). たら: condition temporelle/éventuelle (雨が降ったら出かけません). なら: hypothèse/sujet donné (日本に行くなら、京都に行ってください)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "metadata": {
+      "context": "Téléphone",
+      "can_do": "Se présenter et demander quelqu'un"
+    },
+    "text": "A: もしもし、山田さんの携帯ですか。\nB: はい、山田ですが。\nA: 田中と申します。今、少しお時間よろしいでしょうか。\n— Allô, c'est le portable de M. Yamada ? Oui, à l'appareil. Je suis Tanaka. Avez‑vous un instant ?"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Adverbes de fréquence"
+    },
+    "text": "いつも (toujours), よく (souvent), たいてい (généralement), ときどき (parfois), あまり〜ない (rarement), ぜんぜん〜ない (jamais). Ex: よく音楽を聞きます。あまりテレビを見ません。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Donner/recevoir: あげる / くれる / もらう (aperçu)"
+    },
+    "text": "あげる: le locuteur donne à autrui. くれる: autrui donne au locuteur/groupe. もらう: recevoir. Ex: 友だちが本をくれました (Un ami m'a donné un livre). 母に花をあげました (J'ai offert des fleurs à ma mère). 先生から辞書をもらいました (J'ai reçu un dictionnaire du prof)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "culture_note",
+    "metadata": {
+      "topic": "Cartes de visite (名刺)"
+    },
+    "text": "Présentez la carte avec les deux mains, lisez celle de l'autre personne, ne l'enfouissez pas immédiatement. Politesse et hiérarchie sont importantes."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_example",
+    "metadata": {
+      "word": "大丈夫",
+      "reading": "daijōbu",
+      "translation": "ça va / pas de problème",
+      "register": "conversationnel"
+    },
+    "text": "A: 痛いですか。B: 大丈夫です。— Avez‑vous mal ? B: Ça va."
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "metadata": {
+      "type": "production",
+      "theme": "Présentation"
+    },
+    "text": "Tâche: Présentez‑vous en 3 phrases: 1) Nom + はじめまして 2) Nationalité/profession avec です 3) Hobby (〜が好きです). Modèle: はじめまして。マリーです。フランス人です。音楽が好きです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "kanji_entry",
+    "metadata": {
+      "kanji": "学",
+      "readings_on": ["ガク"],
+      "readings_kun": ["まな(ぶ)"],
+      "meaning_fr": "étudier, apprendre",
+      "jlpt": "N5"
+    },
+    "text": "Ex: 学生 (がくせい, étudiant), 留学 (りゅうがく, études à l'étranger), 学ぶ (まなぶ, apprendre)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "metadata": {
+      "theme": "Mots utiles en voyage"
+    },
+    "text": "駅 (えき, gare), 地図 (ちず, carte), 両替 (りょうがえ, change), 予約 (よやく, réservation), 空いている (disponible), 満席 (complet), 営業時間 (horaires)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "metadata": {
+      "rule_name": "Essayer: 〜てみる"
+    },
+    "text": "新しい料理を食べてみました。— J'ai essayé de manger un nouveau plat. ちょっと着てみてもいいですか。— Puis‑je l'essayer (vêtement) ?"
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Débutant (A1): 1) Écriture: hiragana, katakana; 2) Prononciation: voyelles, sokuon, voyelles longues; 3) Salutations et présentations; 4) Particules de base (は, の, も, を, に, で); 5) Verbes en -ます et négation; 6) Adjectifs en い/な; 7) Compter et heures; 8) Situations: café, magasin; 9) Kanji N5 fondamentaux; 10) Révision active + mini-projet de présentation."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Voyage: 1) Formules de politesse; 2) Demander son chemin; 3) Transports (billets, horaires); 4) Commander nourriture/boissons; 5) Logement (réservations, check-in); 6) Achats et prix; 7) Urgences et santé; 8) Culture: étiquette; 9) Kanji utiles (駅, 出口, 円); 10) Scénarios jeux de rôle."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Intermédiaire (A2→B1): 1) Révision A1; 2) Forme en て (enchaînement, permission); 3) Passé court et style neutre; 4) Potentiel et volitif; 5) Intention et planification 〜つもり; 6) Expérience 〜たことがある; 7) Comparatifs et superlatifs; 8) Conditionnels と/たら/なら; 9) Don/recevoir あげる/くれる/もらう; 10) Conversation thématique (travail, études)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Axé Affaires: 1) Keigo aperçu; 2) Téléphone et rendez-vous; 3) Présentation d'entreprise; 4) Emails simples; 5) Réunions et tours de parole; 6) Négociation polie (〜させていただく); 7) Cartes de visite et salutations; 8) Voyage d'affaires; 9) Expressions atténuées; 10) Étude de cas."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan JLPT N5: 1) Grammaire clé (です/ます, は/が/を/に/で); 2) Verbes N5; 3) Adjectifs N5; 4) Particules fréquences; 5) Lectures kanji N5; 6) Écoute courte; 7) Lecture d'annonces; 8) Stratégies QCM; 9) Simulés; 10) Correction détaillée."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Conversationnel: 1) Tourner des questions; 2) Relances et réactions; 3) Décrire sa journée; 4) Opinions simples (と思います); 5) Conseils (ほうがいい); 6) Inviter et accepter/refuser; 7) Raconter au passé; 8) Habitudes 〜ている; 9) Plans futurs; 10) Projet: entretien amical filmé."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Culture intégrée: 1) Fêtes (お正月, 花見); 2) Cuisine (menus, plats); 3) Transports; 4) Logement; 5) Étiquette au temple; 6) Shopping; 7) Pop-culture; 8) Sports et loisirs; 9) Nature et météo; 10) Mini-présentation culturelle."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Révision Spaced: 1) Diagnostics; 2) Paquets vocabulaire thématiques; 3) Règles ciblées par erreurs; 4) Dialogues gradués; 5) Écoute authentique brève; 6) Exercices adaptatifs; 7) Jeux de rôle; 8) Évaluations rapides; 9) Consolidation kanji; 10) Portfolio d'exemples personnels."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Étudiant Pressé (4 semaines): S1: survie (salut, acheter, demander); S2: transports et directions; S3: restaurant et hébergement; S4: urgences + révision générale; activité quotidienne: 15 min SRS + 10 min écoute."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Lecture Débutant: 1) Hiragana intensif; 2) Katakana; 3) Kanji radicaux de base; 4) Mots fréquents; 5) Phrases modèle; 6) Lire panneaux; 7) Lire menus; 8) Petits contes; 9) Notes de cours; 10) Projet: lire un flyer local."
+  },
+  {
+    "language": "japonais",
+    "content_type": "course_plan_structure",
+    "text": "Plan Audio-Prononciation: 1) Voyelles et longueur; 2) Sokuon っ; 3) Nasales; 4) Liaison; 5) Pitch accent (notions); 6) Rythme moraïque; 7) Lecture de nombres; 8) Politesse et intonation; 9) Lire à voix haute; 10) Enregistrement et feedback."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Hiragana: syllabaire pour grammaire et mots natifs. 46 de base: あいうえお… + diacritiques (が, ぱ) + combinaisons (きゃ, みゅ). Usage: okurigana, particules."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Katakana: syllabaire pour emprunts, onomatopées, emphase visuelle. Ex: コンピューター, アイスクリーム, ドキドキ. Longueurs voyelles par ー."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Kanji: logogrammes. Rôles: racines lexicales, distinction homophones, compaction. Lire par on'yomi/kun'yomi. Ex: 日(にち/ひ), 人(じん/ひと)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Furigana: petites lectures au-dessus des kanji pour l'apprentissage. Utiles pour textes débutants et noms propres."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Ponctuation et symboles: 。、・ー『』「」？！〜 円(¥). Format des dates: 2025年8月28日. Numération mixte: ３月, 三日."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Radicaux (部首): éléments graphiques servant à regrouper les kanji et deviner le sens/lecture. Ex: 氵(eau) dans 海, 河; 扌(main) dans 持, 探."
+  },
+  {
+    "language": "japonais",
+    "content_type": "character_set_structure",
+    "text": "Orthographe sonore: sokuon っ double consonne (かった), chōon ー allonge la voyelle en katakana (ゲーム). Effets sémantiques (おばさん/おばあさん)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Copule です\nUsage: équation/attribution polie. Négation: 〜ではありません; passé: でした. Ex: わたしは学生です。昨日は休みでした。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particule は (thème)\nFocalise le thème connu. Ex: 今日は暑いです。私は音楽が好きです。Contraste: Aは高いが、Bは安い。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particule が (sujet/nouveauté)\nIntroduit nouveau sujet, met l'accent. Ex: 猫がいます。誰が来ますか。好き/嫌い prennent が: 日本語が好きです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particule を (objet direct)\nMarque l'objet affecté par l'action. Ex: パンを食べます。本を読みます。道を歩きます (trajet)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particule に (destination/temps/existence)\nLieu d'arrivée, point dans le temps, existence: 学校に行く。3時に会う。机の上に本がある。 bénéficiaire: 母に花をあげる。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particule で (lieu/moyen)\nLieu d'action, instrument: 図書館で勉強する。電車で行く。日本語で話す。理由 (一部): 病気で休む。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Particules へ/と/も/の\nへ direction: 東京へ。と avec/et: 友だちと行く。も aussi: 私も。の possession/nominalisation: 日本の本。読むのが好き。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Adjectifs en い et en な\nConjugaison: たかい→たかくない/たかかった。しずか(な)→しずかじゃない/しずかでした。Avant nom: きれいな部屋。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Verbes en -ます\nGroupes: 五段(書きます), 一段(食べます), irréguliers(します/来ます). Négation: 〜ません; passé: 〜ました; politesse stable."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Forme en て\nFormation: 行って, 読んで, 食べて, して, きて. Usages: enchaîner, demande 〜てください, permission 〜てもいい, interdiction 〜てはいけない."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Passé court et style neutre\n食べた/食べない/食べなかった. Usage dans narration informelle, citations, structures complexes avant 名詞."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Progressive 〜ている\nAction en cours: 今勉強している。État résultant: 結婚している。Habitude: 毎朝走っている。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Désir 〜たい / 欲しい\nVerbe en -ます→-たい: 日本へ行きたい。Nom + が欲しい: 新しい本が欲しい。Autrui: 〜たがる (観察)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Potentiel\n食べられる/行ける/読める/できる/来られる(これる). Ex: 日本語が少し話せます。能力/permission implicite."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Volitif 〜よう (let's/intent)\n行こう/食べよう/しよう/来よう. Invitation: 一緒に行こう。Intention personnelle: 来週から早起きしようと思う。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Intention 〜つもり\n辞書形 + つもりだ: 来年日本に行くつもりだ。Négation: 行かないつもり。Plan ferme vs souhait."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Expérience 〜たことがある\n東京タワーに登ったことがある。質問: 〜たことがありますか。頻度: 一度/何回も + ある。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Comparaison より / ほど / 一番\nAはBより高い。AはBほど難しくない。一番好きな食べ物は寿司です。Degrés: ずっと, もっと."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Conditionnels と / たら / なら\nと: généralités; たら: si/quand; なら: à propos de. 春になると暖かい。雨が降ったら行かない。日本に行くなら京都へ。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Obligation 〜なければならない / 〜いけない\n勉強しなければならない。口語: しなきゃ(いけない)。Pas nécessaire: 〜なくてもいい。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Permission/interdiction\n〜てもいいです: 写真を撮ってもいいですか。〜てはいけません: ここで吸ってはいけません。Affichage public fréquent."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Donner/recevoir あげる / くれる / もらう\n視点 clé. 私は友だちに本をあげた。友だちが私に本をくれた。友だちから本をもらった。Bien choisir la particule に/から。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## Propositions relatives (phrase + 名詞)\n読んでいる本, 昨日買った靴. L'ordre est antéposé; pas de pronom relatif. Sujet interne marqué par が le plus souvent."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## から / ので (cause)\nから: subjectif/quotidien. ので: neutre/poli. 雨だから出かけない。雨なので出かけません。Nuance de politesse et objectivité."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## が / けど (mais)\n好きですが高いです。行きたいけど時間がない。けれども plus soutenu. Opposition douce souvent utilisée pour atténuer."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## つもり・予定・つもりはない\n予定 (planning objectif): 来週の予定があります。つもり (intention): 日本に行くつもり。否定: 行くつもりはない。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## 〜やすい / 〜にくい\n食べやすい: facile à manger. 読みにくい: difficile à lire. Formation: ます-stem + やすい/にくい. Propriétés d'objets et d'actions."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## 〜ながら (en faisant)\n歩きながら音楽を聞く。Sujet identique pour les deux actions; action principale exprimée par le verbe final."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## 〜ほうがいい (conseil)\n早く寝たほうがいいよ。Négation: 行かないほうがいい。Souvent avec と思う/でしょう pour adoucir le conseil."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## と思う / 〜そうだ (opinion/aire)\n雨だと思う。美味しそう。聞いたそうだ (on-dit). Confiance et source modulent la forme (らしい, ようだ, みたい)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## まだ / もう / もうすぐ\nまだ食べていない。もう食べた。もうすぐ着く。Temporalité utile pour dialogues quotidiens."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## 〜たり〜たりする (énumération non exhaustive)\n週末は映画を見たり本を読んだりする。Passé + り répété 2+ éléments + する。Résumé flexible d'activités."
+  },
+  {
+    "language": "japonais",
+    "content_type": "grammar_rule",
+    "text": "## 〜前に / 〜後で / 〜てから\n寝る前に歯を磨く。勉強した後でゲームをする。朝ごはんを食べてから出かける。Ordre d'actions clair."
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Salutations et formules\n- おはようございます: bonjour (matin, poli)\n- こんにちは: bonjour (journée)\n- こんばんは: bonsoir\n- ありがとうございます: merci\n- すみません: pardon/excusez-moi\n- 失礼します: je me permets / au revoir (formel)"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Nombres et compteurs\n- 1〜10: いち, に, さん, し/よん, ご, ろく, なな/しち, はち, きゅう/く, じゅう\n- Compteurs: つ (ひとつ〜とお), 人 (ひとり, ふたり, さんにん), 枚, 本, 匹, 台"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Temps et horaires\n- 今日, 明日, 昨日\n- 〜時, 〜分, 半, 〜時半\n- 朝, 昼, 夕方, 夜, 深夜\n- 早い/遅い, 予約, 営業時間"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Famille (内/外)\n- 母/お母さん, 父/お父さん, 兄/お兄さん, 姉/お姉さん, 弟/弟さん, 妹/妹さん\n- 夫/主人, 妻/奥さん, 子ども/お子さん"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Nourriture et boissons\n- ご飯, パン, 肉, 魚, 野菜, 果物\n- 水, お茶, コーヒー, ビール, 日本酒\n- 味: 甘い, 辛い, しょっぱい, 苦い, すっぱい"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Transports\n- 駅, 地下鉄, バス停, 切符, 時刻表, 乗り換え, 方面\n- 入口/出口, 南口/北口, ホーム, 番線"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Ville et directions\n- 右/左/まっすぐ, 角, 信号, 交差点, 橋\n- 図書館, 役所, 銀行, 郵便局, 病院, 薬局"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Achats\n- 値段, いくら, セール, 試着, サイズ, レシート, 保証\n- 現金, カード, 免税, 返品, 交換"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Santé\n- 痛い, 熱, 風邪, 薬, 診察, 保険証\n- アレルギー, 怪我, 救急, 処方箋, 受付"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Météo\n- 晴れ, 雨, 雪, くもり, 風, 台風\n- 暖かい, 寒い, 蒸し暑い, 乾燥, 気温"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Maison\n- 部屋, 台所, 風呂, トイレ, 窓, 玄関\n- 家具: 机, 椅子, ベッド, 棚, 冷蔵庫"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: École et travail\n- 学校, 教室, 宿題, 試験, 成績\n- 会社, 会議, 上司, 同僚, 休憩, 出張, 締め切り"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Technologies\n- 携帯, スマホ, 充電, Wi-Fi, パスワード, アプリ, 写真, 動画\n- メール, 添付, ダウンロード, アップロード"
+  },
+  {
+    "language": "japonais",
+    "content_type": "vocabulary_set",
+    "text": "Thème: Loisir et sport\n- 映画, 音楽, 読書, 旅行, 料理\n- 野球, サッカー, ジム, ヨガ, 登山"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Présentation\nA: はじめまして。マリーです。\nB: はじめまして。田中と申します。よろしくお願いします。\nA: フランスから来ました。\nB: そうですか。ようこそ。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Au café\n店員: いらっしゃいませ。ご注文は？\n客: ホットコーヒーを一つお願いします。\n店員: 砂糖とミルクは？\n客: 砂糖はなしでお願いします。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Demander le chemin\nA: すみません、駅はどこですか。\nB: この道をまっすぐ行って、二つ目の信号を右に曲がってください。\nA: ありがとうございます。助かりました。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Acheter un billet\n客: 東京まで大人一枚、片道お願いします。\n駅員: 片道ですね。1200円です。\n客: カードで払えますか。\n駅員: はい、どうぞ。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Réservation d'hôtel\n客: シングルルームを二泊予約したいです。\n受付: いつからですか。\n客: 来週の金曜日からです。\n受付: 承知しました。\n客: 朝食は含まれていますか。\n受付: はい、含まれています。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Shopping\n客: このシャツはいくらですか。\n店員: 3500円です。\n客: 試着してもいいですか。\n店員: どうぞ、試着室はあちらです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Restaurant\n客: すみません、注文いいですか。\n店員: はい、どうぞ。\n客: 天ぷら定食をお願いします。\n店員: 他に何か。\n客: 大丈夫です。\n店員: お会計はレジでお願いします。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Chez le médecin\n医者: どうしましたか。\n患者: 熱があって、のどが痛いです。\n医者: 薬を出します。今日は安静にしてください。\n患者: ありがとうございます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Téléphone\nA: もしもし、田中さんの携帯ですか。\nB: はい、田中です。\nA: 山本ですが、今お時間大丈夫でしょうか。\nB: はい、少しなら。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Invitation\nA: 今週末、映画を見に行きませんか。\nB: いいですね。土曜日はどうですか。\nA: 午後なら大丈夫です。\nB: じゃあ、3時に駅で。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Retard\nA: すみません、10分遅れます。\nB: わかりました。気をつけて来てください。\nA: ありがとうございます。すぐ行きます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Bureau\n上司: 今日の会議は3時からです。\n部下: 承知しました。資料を準備します。\n上司: ありがとう。\n部下: よろしくお願いします。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: À la poste\n客: フランスまで小包を送りたいです。\n職員: こちらの用紙にご記入ください。\n客: どのくらいで届きますか。\n職員: 1週間ほどです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Café à emporter\n店員: ご注文は以上でよろしいですか。\n客: はい、持ち帰りでお願いします。\n店員: お会計は600円です。\n客: 現金で払います。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Demande de permission\nA: ここで写真を撮ってもいいですか。\nB: すみません、撮影は禁止です。\nA: わかりました。ありがとうございます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: À l'aéroport\n職員: パスポートを拝見します。\n客: はい、どうぞ。\n職員: こちらへお進みください。\n客: ありがとうございます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "dialogue",
+    "text": "Contexte: Colocation\nA: ゴミ出しは何曜日ですか。\nB: 火曜日と金曜日です。\nA: ありがとうございます。掃除は分担しましょう。\nB: いいですね。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Traduction FR→JA\nPhrase: 'Je mange du pain.'\nRéponse: 私はパンを食べます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Traduction FR→JA\nPhrase: 'Où est la gare ?'\nRéponse: 駅はどこですか。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Cloze (particules)\nTexte: 私__図書館__本__読みます。\nSolution: 私は図書館で本を読みます。 (は/で/を)"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: QCM (は/が)\nPhrase: __ 雨が降っています。\nA) 私は  B) 今は  C) 外が  D) どこは\nRéponse: C) 外が (外が雨が降っています est incorrect; phrase correcte: 雨が降っています; variante: 外は雨です)"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Transformation (〜て)\nMettez en て: 行く→行って, 飲む→飲んで, 書く→書いて, 話す→話して, する→して, 来る→きて。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Ordre d'actions\nReliez avec 〜てから/〜前に: 'Manger' puis 'sortir' → 食べてから出かける。 'Se coucher' avant 'se brosser les dents' (incorrect) → 寝る前に歯を磨く。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Reformulation polie\nTransformez en です/ます: これ、いる？ → これは必要ですか。 手伝って → 手伝ってください。ありがとう → ありがとうございます。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Potentiel\nComplétez: 日本語を少し__ます。\nRéponse: 話せます。 Autres: 読めます/書けます/聞こえます (usage varie)."
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Comparatifs\nTraduisez: 'A est plus grand que B' → AはBより大きい。 'C n'est pas aussi bon que D' → CはDほど良くない。 'E est le plus rapide' → Eが一番速い。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Permission/Interdiction\nTraduisez: 'Puis-je entrer ?' → 入ってもいいですか。 'Il ne faut pas fumer ici' → ここでタバコを吸ってはいけません。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: たい/欲しい\nTraduisez: 'Je veux aller au Japon' → 日本へ行きたいです。 'Je veux une nouvelle valise' → 新しいスーツケースが欲しいです。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: 〜たり〜たりする\nExemples à produire: 週末は__たり__たりします。\nSolutions possibles: 映画を見たり散歩したりします。勉強したりゲームしたりします。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Temps\nÉcrivez l'heure: '2h30' → 2時半。 '3h15' → 3時15分。 '7h moins 10' → 7時10分前。 (variantes: 6時50分)"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Direction\nOrdres: まっすぐ行って、二つ目の角を右に曲がって、駅は左側です。 Question: 駅はどこですか と答えを対応させる。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: Relatives\nCombinez: 'J'ai acheté un livre' + 'Il est intéressant' → 面白い本を買いました。 'C'est la personne' + 'qui enseigne japonais' → 日本語を教える人です。"
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: から/ので\nJustifiez: 'Je ne sors pas parce qu'il pleut' → 雨だから出かけません。 Poliment: 雨なので出かけません。 Nuancez la politesse."
+  },
+  {
+    "language": "japonais",
+    "content_type": "exercise",
+    "text": "Type: は/が\nChoisissez: __ 日本語が好きです。\nRéponse: 私は。 Explication: テーマは私, 好き prend が pour l'objet de la préférence."
+  }
+]

@@ -1,4 +1,4 @@
-# Fichier : nanshe/backend/app/api/v2/endpoints/chapter_router.py (VERSION FINALE COMPLÈTE)
+# Fichier : nanshe/backend/app/api/v2/endpoints/chapter_router.py (VERSION MISE À JOUR)
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
@@ -7,11 +7,14 @@ from sqlalchemy import desc
 
 # On utilise les nouveaux chemins d'importation suite à la réorganisation
 from app.schemas.course import chapter_schema, knowledge_component_schema
+# NOUVEAUX IMPORTS POUR LES SCHÉMAS DE VOCABULAIRE ET CARACTÈRES
+from app.schemas.course import vocabulary_schema, character_schema
 from app.crud.course import chapter_crud
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.course import chapter_model
 from app.models.user.user_model import User
 from app.models.progress import user_answer_log_model
+from typing import List
 
 router = APIRouter()
 
@@ -25,75 +28,74 @@ def read_chapter_details(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Récupère les détails d'un chapitre.
-    Si le chapitre appartient à un cours de langue et n'a pas encore été généré,
-    cette fonction déclenche la pipeline de génération de contenu JIT en arrière-plan.
+    Récupère les détails d'un chapitre et déclenche la génération de contenu
+    "Juste-à-Temps" (JIT) si le contenu n'a pas encore été créé.
     """
     chapter = chapter_crud.get_chapter_details(db, chapter_id=chapter_id)
     if not chapter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found")
 
-    # --- LOGIQUE D'AIGUILLAGE "JUSTE-À-TEMPS" ---
-    is_language_course = chapter.level.course.course_type == 'langue'
-    is_content_pending = chapter.lesson_status == "pending"
-
-    if is_language_course and is_content_pending:
-        logger.info(f"Déclenchement de la pipeline JIT pour le chapitre de langue {chapter.id}")
+    # --- DÉCLENCHEUR JIT UNIFIÉ ---
+    if chapter.lesson_status == "pending":
+        logger.info(f"Déclenchement JIT pour le chapitre '{chapter.title}' (ID: {chapter.id})")
         chapter.lesson_status = "generating"
         chapter.exercises_status = "generating"
         db.commit()
         
-        # --- MODIFICATION CLÉ ---
-        # On passe maintenant l'ID de l'utilisateur à la tâche de fond
-        background_tasks.add_task(
-            chapter_crud.generate_language_chapter_content_task, 
-            db=db, 
-            chapter_id=chapter_id, 
-            user_id=current_user.id # <-- AJOUTER CET ARGUMENT
-        )
-        # -------------------------
+        # Aiguillage : on choisit la bonne fonction de génération en fonction du type de cours
+        course_type = chapter.level.course.course_type
+        if course_type == 'langue':
+            logger.info(f"  -> Tâche de génération de langue sélectionnée.")
+            task_function = chapter_crud.generate_language_chapter_content_task
+        else:
+            logger.info(f"  -> Tâche de génération générique sélectionnée.")
+            task_function = chapter_crud.generate_generic_chapter_content_task
         
+        # On lance la tâche de fond correspondante
+        background_tasks.add_task(
+            task_function, 
+            db=db, 
+            chapter_id=chapter_id,
+            user_id=current_user.id
+        )
         db.refresh(chapter)
-    # ---------------------------------------------
-
-    # --- Récupération des dernières réponses de l'utilisateur (logique existante) ---
-    component_ids = [comp.id for comp in chapter.knowledge_components]
-    if not component_ids:
-        return chapter_schema.Chapter.model_validate(chapter)
-
-    latest_answers_subquery = db.query(
-        user_answer_log_model.UserAnswerLog.id,
-        user_answer_log_model.UserAnswerLog.component_id,
-        user_answer_log_model.UserAnswerLog.status,
-        user_answer_log_model.UserAnswerLog.user_answer_json,
-        user_answer_log_model.UserAnswerLog.ai_feedback
-    ).filter(
-        user_answer_log_model.UserAnswerLog.user_id == current_user.id,
-        user_answer_log_model.UserAnswerLog.component_id.in_(component_ids)
-    ).order_by(
-        user_answer_log_model.UserAnswerLog.component_id,
-        desc(user_answer_log_model.UserAnswerLog.answered_at)
-    ).distinct(user_answer_log_model.UserAnswerLog.component_id).subquery()
-
-    user_answers_map = {
-        row.component_id: {
-            "id": row.id,
-            "status": row.status,
-            "is_correct": row.status == 'correct',
-            "user_answer_json": row.user_answer_json,
-            "ai_feedback": row.ai_feedback
-        }
-        for row in db.query(latest_answers_subquery).all()
-    }
     
+    # --- PRÉPARATION DE LA RÉPONSE ---
+    # Valide l'objet chapter de base avec Pydantic
     response_chapter = chapter_schema.Chapter.model_validate(chapter)
-    
-    for comp_schema in response_chapter.knowledge_components:
-        if comp_schema.id in user_answers_map:
-            comp_schema.user_answer = knowledge_component_schema.UserAnswer(**user_answers_map[comp_schema.id])
+
+    # Récupère le vocabulaire et les caractères pour les cours de langue
+    if chapter.level.course.course_type == 'langue':
+        response_chapter.characters = chapter_crud.get_characters_with_strength(db, chapter_id=chapter_id, user_id=current_user.id)
+        response_chapter.vocabulary = chapter_crud.get_vocabulary_with_strength(db, chapter_id=chapter_id, user_id=current_user.id)
+
+    # Récupère les dernières réponses de l'utilisateur pour les exercices du chapitre
+    component_ids = [comp.id for comp in chapter.knowledge_components]
+    if component_ids:
+        latest_answers_query = db.query(
+            user_answer_log_model.UserAnswerLog
+        ).filter(
+            user_answer_log_model.UserAnswerLog.user_id == current_user.id,
+            user_answer_log_model.UserAnswerLog.component_id.in_(component_ids)
+        ).order_by(
+            user_answer_log_model.UserAnswerLog.component_id,
+            desc(user_answer_log_model.UserAnswerLog.answered_at)
+        ).distinct(user_answer_log_model.UserAnswerLog.component_id)
+        
+        user_answers_map = {log.component_id: log for log in latest_answers_query.all()}
+        
+        for comp_schema in response_chapter.knowledge_components:
+            if comp_schema.id in user_answers_map:
+                log = user_answers_map[comp_schema.id]
+                comp_schema.user_answer = knowledge_component_schema.UserAnswer(
+                    id=log.id,
+                    status=log.status,
+                    is_correct=(log.status == 'correct'),
+                    user_answer_json=log.user_answer_json,
+                    ai_feedback=log.ai_feedback
+                )
 
     return response_chapter
-
 
 @router.post("/{chapter_id}/generate-lesson", status_code=status.HTTP_202_ACCEPTED)
 def trigger_lesson_generation(

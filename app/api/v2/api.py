@@ -1,6 +1,17 @@
 # Fichier: nanshe/backend/app/api/v2/api.py (CORRIGÉ)
 from fastapi import APIRouter
-from .endpoints import user_router, course_router, level_router, progress_router, chapter_router, toolbox_router, feedback_router,knowledge_node_router
+from .endpoints import(
+    user_router, 
+    course_router, 
+    level_router, 
+    progress_router, 
+    chapter_router, 
+    toolbox_router, 
+    feedback_router,
+    knowledge_node_router,
+    nlp_router,
+    capsule_router,
+)
 
 api_router = APIRouter()
 
@@ -13,4 +24,6 @@ api_router.include_router(toolbox_router.router, prefix="/toolbox", tags=["Toolb
 api_router.include_router(feedback_router.router, prefix="/feedback", tags=["Feedback"])
 api_router.include_router(knowledge_node_router.router, prefix="/nodes", tags=["nodes"])
 api_router.include_router(knowledge_node_router.router, prefix="/knowledge-nodes", tags=["Knowledge Nodes"])
+api_router.include_router(nlp_router.router, prefix="/nlp", tags=["Nlp"])
+api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Capsule"])
 

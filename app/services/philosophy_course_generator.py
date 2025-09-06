@@ -192,7 +192,9 @@ class PhilosophyCourseGenerator:
             vector_entry = VectorStore(
                 knowledge_node_id=node.id, 
                 chunk_text=chunk,
-                embedding=embedding
+                embedding=embedding,
+                source_language="francais",  # Ou la langue du cours si elle est définie
+                content_type="philosophy_lesson_chunk"
             )
             self.db.add(vector_entry)
         

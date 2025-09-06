@@ -7,6 +7,7 @@ from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .course_model import Course
+    from ..progress.user_answer_log_model import UserAnswerLog
 
 # On définit NodeExercise en premier
 class NodeExercise(Base):
@@ -20,6 +21,7 @@ class NodeExercise(Base):
     content_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     node: Mapped["KnowledgeNode"] = relationship(back_populates="exercises")
+    user_answers: Mapped[List["UserAnswerLog"]] = relationship(back_populates="node_exercise")
 
     def __repr__(self) -> str:  # pragma: no cover - simple representation
         """Return a readable representation for admin interfaces."""

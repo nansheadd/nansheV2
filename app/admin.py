@@ -1,4 +1,5 @@
 """Admin views for SQLAdmin with automatic model registration."""
+from app.db.base import *
 
 import importlib
 from pathlib import Path
@@ -211,28 +212,26 @@ class ChapterAdmin(ModelView, model=Chapter):
 
 
 class VocabularyItemAdmin(ModelView, model=VocabularyItem):
-    """Admin view for vocabulary items."""
+    name = "Vocabulary Item"
+    name_plural = "Vocabulary Items"
+    icon = "fa-solid fa-list-alt"
+    category = "Course Content"
 
-    name = "Vocabulaire"
-    name_plural = "Vocabulaire"
-    icon = "fa-solid fa-language"
+    # V-- LA CORRECTION EST ICI --V
+    # Remplacez .term par .word
     column_list = [
         VocabularyItem.id,
-        VocabularyItem.term,
+        VocabularyItem.word, # C'était VocabularyItem.term
         VocabularyItem.translation,
-        VocabularyItem.pronunciation,
         VocabularyItem.chapter,
     ]
-
-    column_formatters = {
-        VocabularyItem.chapter: lambda m, a: m.chapter.title if m.chapter else "",
-    }
-
-    column_searchable_list = [VocabularyItem.term, VocabularyItem.translation]
-    can_create = True
-    can_edit = True
-    can_delete = True
-
+    column_searchable_list = [VocabularyItem.word, VocabularyItem.translation]
+    form_columns = [
+        VocabularyItem.chapter,
+        VocabularyItem.word,
+        VocabularyItem.pinyin,
+        VocabularyItem.translation,
+    ]
 
 class GrammarRuleAdmin(ModelView, model=GrammarRule):
     """Admin view for grammar rules."""
@@ -259,27 +258,31 @@ class GrammarRuleAdmin(ModelView, model=GrammarRule):
 
 
 class KnowledgeComponentAdmin(ModelView, model=KnowledgeComponent):
-    """Admin view for knowledge components."""
-
-    name = "Composant de Connaissance"
-    name_plural = "Composants de Connaissance"
-    icon = "fa-solid fa-sitemap"
+    """Vue d'administration pour les composants de connaissance."""
+    icon = "fa-solid fa-puzzle-piece"
+    name = "Composant"
+    name_plural = "Composants"
+    
+    # --- C'EST ICI QUE L'ON FAIT LA MODIFICATION ---
+    # On remplace 'category' par les nouveaux champs de la taxonomie
     column_list = [
         KnowledgeComponent.id,
         KnowledgeComponent.title,
-        KnowledgeComponent.category,
+        KnowledgeComponent.domain,  # <-- AJOUT
+        KnowledgeComponent.area,    # <-- AJOUT
+        KnowledgeComponent.skill,   # <-- AJOUT
         KnowledgeComponent.component_type,
         KnowledgeComponent.chapter,
     ]
+    # -----------------------------------------------
 
+    column_searchable_list = [KnowledgeComponent.title]
+    column_sortable_list = [KnowledgeComponent.id, KnowledgeComponent.title, KnowledgeComponent.component_type]
+    
     column_formatters = {
         KnowledgeComponent.chapter: lambda m, a: m.chapter.title if m.chapter else "",
     }
 
-    column_searchable_list = [KnowledgeComponent.title]
-    can_create = True
-    can_edit = True
-    can_delete = True
 
 
 class KnowledgeNodeAdmin(ModelView, model=KnowledgeNode):

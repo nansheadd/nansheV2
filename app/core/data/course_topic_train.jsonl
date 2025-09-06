@@ -1,0 +1,78 @@
+{"text": "Apprendre le japonais pour débutant (hiragana/katakana)", "label": "langues"}
+{"text": "Révision des temps en espagnol (présent, passé, futur)", "label": "langues"}
+{"text": "Prononciation du 'th' en anglais avec exercices audio", "label": "langues"}
+{"text": "Vocabulaire français: cuisine et nourriture (A2)", "label": "langues"}
+{"text": "Compréhension orale: dialogues en allemand niveau B1", "label": "langues"}
+{"text": "Écrire un email professionnel en anglais (formules)", "label": "langues"}
+{"text": "Résoudre des équations du premier degré", "label": "sciences_formelles"}
+{"text": "Initiation aux probabilités et lois de base", "label": "sciences_formelles"}
+{"text": "Démonstration par récurrence: exercices guidés", "label": "sciences_formelles"}
+{"text": "Géométrie: théorème de Thalès et applications", "label": "sciences_formelles"}
+{"text": "Algèbre linéaire: produits scalaires et matrices", "label": "sciences_formelles"}
+{"text": "Statistiques descriptives et inférence simple", "label": "sciences_formelles"}
+{"text": "Physique: mouvement rectiligne uniforme (MRU)", "label": "sciences_naturelles"}
+{"text": "Chimie: équilibrer les équations chimiques", "label": "sciences_naturelles"}
+{"text": "Biologie cellulaire: organites et fonctions", "label": "sciences_naturelles"}
+{"text": "Thermodynamique: premières lois et exercices", "label": "sciences_naturelles"}
+{"text": "Écologie: chaînes alimentaires et écosystèmes", "label": "sciences_naturelles"}
+{"text": "Astronomie: système solaire et phases de la Lune", "label": "sciences_naturelles"}
+{"text": "Microéconomie: offre, demande et élasticité", "label": "sciences_sociales"}
+{"text": "Sociologie: stratification sociale et mobilité", "label": "sciences_sociales"}
+{"text": "Psychologie cognitive: mémoire et attention", "label": "sciences_sociales"}
+{"text": "Science politique: institutions de la Ve République", "label": "sciences_sociales"}
+{"text": "Relations internationales: réalisme et libéralisme", "label": "sciences_sociales"}
+{"text": "Méthodes en sciences sociales: enquêtes et sondages", "label": "sciences_sociales"}
+{"text": "Apprendre Python: bases et structures de données", "label": "informatique_data"}
+{"text": "Développement web: HTML/CSS pour débutants", "label": "informatique_data"}
+{"text": "SQL pour analystes: SELECT, JOIN et agrégations", "label": "informatique_data"}
+{"text": "Introduction au machine learning supervisé", "label": "informatique_data"}
+{"text": "Git et GitHub: workflow et bonnes pratiques", "label": "informatique_data"}
+{"text": "Réseaux: modèles OSI et routage de base", "label": "informatique_data"}
+{"text": "Mécanique: statique des structures simples", "label": "ingenierie_tech"}
+{"text": "Électricité: circuits RLC et analyse fréquentielle", "label": "ingenierie_tech"}
+{"text": "Génie civil: lecture de plans et métrés", "label": "ingenierie_tech"}
+{"text": "Automatique: régulation PID et stabilité", "label": "ingenierie_tech"}
+{"text": "Électronique: diodes, transistors et AOP", "label": "ingenierie_tech"}
+{"text": "Énergie: dimensionnement d’un panneau solaire", "label": "ingenierie_tech"}
+{"text": "Anatomie: système cardiovasculaire", "label": "sante_medecine"}
+{"text": "Physiologie: échanges gazeux et respiration", "label": "sante_medecine"}
+{"text": "Pharmacologie: posologie et interactions", "label": "sante_medecine"}
+{"text": "Soins infirmiers: priorisation et protocoles", "label": "sante_medecine"}
+{"text": "Premiers secours: gestes qui sauvent", "label": "sante_medecine"}
+{"text": "Santé publique: épidémiologie de base", "label": "sante_medecine"}
+{"text": "Histoire: causes de la Révolution française", "label": "humanites"}
+{"text": "Philosophie: Kant et l’impératif catégorique", "label": "humanites"}
+{"text": "Littérature: analyse de Candide de Voltaire", "label": "humanites"}
+{"text": "Civilisations: Grèce antique et citoyenneté", "label": "humanites"}
+{"text": "Religions: histoire du bouddhisme", "label": "humanites"}
+{"text": "Méthodologie: dissertation en histoire", "label": "humanites"}
+{"text": "Théorie musicale: gammes majeures et mineures", "label": "arts_creation"}
+{"text": "Dessin d’observation: proportions et perspectives", "label": "arts_creation"}
+{"text": "Design graphique: typographie et mise en page", "label": "arts_creation"}
+{"text": "Photographie: exposition et composition", "label": "arts_creation"}
+{"text": "Écriture créative: construire un personnage", "label": "arts_creation"}
+{"text": "Montage vidéo: narration et rythme", "label": "arts_creation"}
+{"text": "Finance d’entreprise: analyse des états financiers", "label": "business_droit"}
+{"text": "Marketing digital: SEO et content strategy", "label": "business_droit"}
+{"text": "Stratégie: matrices BCG et SWOT", "label": "business_droit"}
+{"text": "Droit des contrats: vices du consentement", "label": "business_droit"}
+{"text": "Management: motivation et feedback", "label": "business_droit"}
+{"text": "Comptabilité: bilan, compte de résultat", "label": "business_droit"}
+{"text": "Prise de parole en public: gérer le trac", "label": "soft_skills"}
+{"text": "Rédaction professionnelle: emails efficaces", "label": "soft_skills"}
+{"text": "Gestion du temps: méthode Pomodoro", "label": "soft_skills"}
+{"text": "Travail d’équipe: rôles et communication", "label": "soft_skills"}
+{"text": "Créativité: techniques de brainstorming", "label": "soft_skills"}
+{"text": "Résolution de problèmes: 5 pourquoi", "label": "soft_skills"}
+{"text": "Préparer le DELF B2: compréhension écrite", "label": "tests_concours"}
+{"text": "TOEIC: stratégies pour la partie Listening", "label": "tests_concours"}
+{"text": "Révisions du bac: méthodologie de dissertation", "label": "tests_concours"}
+{"text": "GRE Quant: problèmes de pourcentages", "label": "tests_concours"}
+{"text": "JLPT N5: vocabulaire de base", "label": "tests_concours"}
+{"text": "HSK 3: lecture et caractères fréquents", "label": "tests_concours"}
+{"text": "Bureautique: Excel pour tableaux de bord", "label": "metiers_pro"}
+{"text": "Sécurité au travail: prévention des risques", "label": "metiers_pro"}
+{"text": "Vente: techniques de closing en boutique", "label": "metiers_pro"}
+{"text": "Hôtellerie: procédures d’accueil client", "label": "metiers_pro"}
+{"text": "Cuisine pro: hygiène et HACCP", "label": "metiers_pro"}
+{"text": "Artisanat: initiation à la menuiserie", "label": "metiers_pro"}

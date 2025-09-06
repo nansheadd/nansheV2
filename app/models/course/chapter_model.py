@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .knowledge_component_model import KnowledgeComponent
     from .vocabulary_item_model import VocabularyItem
     from .grammar_rule_model import GrammarRule 
+    from .character_model import Character
 
 class Chapter(Base):
     __tablename__ = "chapters"
@@ -32,5 +33,7 @@ class Chapter(Base):
     level: Mapped["Level"] = relationship(back_populates="chapters")
     knowledge_components: Mapped[List["KnowledgeComponent"]] = relationship(back_populates="chapter")
 
-    vocabulary_items: Mapped[List["VocabularyItem"]] = relationship(back_populates="chapter")
+    vocabulary: Mapped[List["VocabularyItem"]] = relationship(back_populates="chapter")
     grammar_rules: Mapped[List["GrammarRule"]] = relationship(back_populates="chapter")
+
+    characters: Mapped[List["Character"]] = relationship(back_populates="chapter", cascade="all, delete-orphan")

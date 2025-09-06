@@ -2,27 +2,33 @@
 from sqlalchemy import Integer, String, JSON, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
-from typing import Dict, Any, TYPE_CHECKING
+from typing import Dict, Any, TYPE_CHECKING, Optional
 from datetime import datetime
 
 if TYPE_CHECKING:
     from ..user.user_model import User
     from ..course.knowledge_graph_model import KnowledgeComponent
+    from ..course.knowledge_graph_model import NodeExercise
 
 class UserAnswerLog(Base):
     __tablename__ = "user_answer_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    component_id: Mapped[int] = mapped_column(Integer, ForeignKey("knowledge_components.id"), nullable=False)
+
+    component_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("knowledge_components.id"), nullable=True)
     answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    node_exercise_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("node_exercises.id"), nullable=True)
+
     user_answer_json: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default='pending_review', nullable=False, index=True)
     ai_feedback: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=True)
     
     # --- Relations ---
     user: Mapped["User"] = relationship("User", back_populates="answer_logs")
-    
+    component: Mapped[Optional["KnowledgeComponent"]] = relationship(back_populates="user_answers")
+    node_exercise: Mapped[Optional["NodeExercise"]] = relationship(back_populates="user_answers")
+
     # On spécifie la clé étrangère pour aider SQLAlchemy à résoudre la dépendance
     knowledge_component: Mapped["KnowledgeComponent"] = relationship(
         "KnowledgeComponent", 

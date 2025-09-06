@@ -1,0 +1,95 @@
+{
+  "economie": {
+    "fondateurs": [
+      {
+        "nom": "Pensée Antique et Médiévale",
+        "periode": "Antiquité - Moyen Âge",
+        "figures_cles": ["Aristote", "Thomas d'Aquin"],
+        "themes": ["juste prix", "richesse", "commerce", "usure"],
+        "description": "Premières réflexions sur l'économie intégrées à une philosophie morale et politique. L'économie est subordonnée à l'éthique et à la justice."
+      }
+    ],
+    "courants_principaux": [
+      {
+        "nom": "Mercantilisme",
+        "periode": "XVIe - XVIIIe siècle",
+        "figures_cles": ["Jean-Baptiste Colbert", "Thomas Mun"],
+        "themes": ["protectionnisme", "métaux précieux", "commerce extérieur", "État fort"],
+        "description": "L'enrichissement de la nation dépend de l'accumulation de métaux précieux et de l'excédent commercial. Défense d'une forte intervention de l'État.",
+        "decoule_de": ["Pensée Antique et Médiévale"]
+      },
+      {
+        "nom": "Physiocratie",
+        "periode": "XVIIIe siècle",
+        "figures_cles": ["François Quesnay", "Turgot"],
+        "themes": ["agriculture", "cercle économique", "laissez-faire"],
+        "description": "Seule l'agriculture produit un véritable surplus. Première tentative de modéliser l'économie de manière scientifique et circulaire.",
+        "decoule_de": ["Pensée Antique et Médiévale"],
+        "en_opposition_a": ["Mercantilisme"]
+      },
+      {
+        "nom": "École Classique",
+        "periode": "Fin XVIIIe - XIXe siècle",
+        "figures_cles": ["Adam Smith", "David Ricardo", "John Stuart Mill"],
+        "themes": ["main invisible", "valeur-travail", "avantage comparatif", "libre-échange"],
+        "description": "Fondation de l'économie politique moderne. L'ordre du marché émerge spontanément de la poursuite des intérêts individuels.",
+        "decoule_de": ["Physiocratie"],
+        "en_opposition_a": ["Mercantilisme"]
+      },
+      {
+        "nom": "Marxisme",
+        "periode": "XIXe siècle",
+        "figures_cles": ["Karl Marx", "Friedrich Engels"],
+        "themes": ["valeur-travail", "plus-value", "lutte des classes", "critique du capitalisme"],
+        "description": "Le capitalisme exploite le prolétariat en s'appropriant la plus-value du travail. Analyse matérialiste de l'histoire et prédiction du communisme.",
+        "decoule_de": ["École Classique"],
+        "en_opposition_a": ["École Classique"]
+      },
+      {
+        "nom": "École Néoclassique",
+        "periode": "Fin XIXe - Début XXe siècle",
+        "figures_cles": ["Léon Walras", "Carl Menger", "Alfred Marshall"],
+        "themes": ["utilité marginale", "équilibre général", "microéconomie"],
+        "description": "Révolution marginaliste. La valeur repose sur l'utilité subjective et non sur le travail. Base de la microéconomie moderne.",
+        "decoule_de": ["École Classique"],
+        "en_opposition_a": ["Marxisme"]
+      },
+      {
+        "nom": "Keynésianisme",
+        "periode": "XXe siècle (1930-1970)",
+        "figures_cles": ["John Maynard Keynes"],
+        "themes": ["demande effective", "intervention de l'État", "plein emploi", "politique budgétaire"],
+        "description": "Les marchés peuvent rester durablement en déséquilibre. L'État doit soutenir la demande globale pour éviter le chômage de masse.",
+        "decoule_de": ["École Néoclassique"],
+        "en_opposition_a": ["École Classique", "École Néoclassique"]
+      },
+      {
+        "nom": "École de Chicago (Monétarisme)",
+        "periode": "XXe siècle (1950-2000)",
+        "figures_cles": ["Milton Friedman"],
+        "themes": ["monnaie", "inflation", "libre marché", "État minimal"],
+        "description": "L'inflation est toujours un phénomène monétaire. Défense d'un État minimal et de règles strictes sur la masse monétaire.",
+        "decoule_de": ["École Néoclassique"],
+        "en_opposition_a": ["Keynésianisme"]
+      },
+      {
+        "nom": "Nouvelle Économie Classique",
+        "periode": "XXe siècle (1970 - ...)",
+        "figures_cles": ["Robert Lucas", "Thomas Sargent"],
+        "themes": ["anticipations rationnelles", "marchés efficients"],
+        "description": "Les agents anticipent parfaitement les politiques. L'intervention publique est inefficace car vite anticipée par le marché.",
+        "decoule_de": ["École de Chicago (Monétarisme)"],
+        "en_opposition_a": ["Keynésianisme"]
+      },
+      {
+        "nom": "Néo-keynésianisme",
+        "periode": "XXe siècle (1980 - ...)",
+        "figures_cles": ["Joseph Stiglitz", "Paul Krugman", "Janet Yellen"],
+        "themes": ["rigidités", "imperfections de marché", "politiques contracycliques"],
+        "description": "Synthèse entre Keynes et les néoclassiques. Accepte la microéconomie marginaliste mais insiste sur les rigidités et asymétries justifiant l'État.",
+        "decoule_de": ["Keynésianisme", "École Néoclassique"],
+        "en_opposition_a": ["Nouvelle Économie Classique"]
+      }
+    ]
+  }
+}

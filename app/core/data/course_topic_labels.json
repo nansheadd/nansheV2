@@ -1,0 +1,15 @@
+{
+  "langues": "Apprentissage des langues (étrangères ou FLE): grammaire, vocabulaire, prononciation, CECR, alphabets non latins.",
+  "sciences_formelles": "Mathématiques et logique: arithmétique, algèbre, géométrie, probabilités, statistiques, preuves.",
+  "sciences_naturelles": "Physique, chimie, biologie, sciences de la Terre et astronomie.",
+  "sciences_sociales": "Économie, sociologie, psychologie, science politique, anthropologie, histoire économique.",
+  "informatique_data": "Programmation, développement web, bases de données, data science, IA, systèmes et réseaux.",
+  "ingenierie_tech": "Disciplines d’ingénierie: civil, mécanique, électrique/électronique, industriel, énergie, automatique.",
+  "sante_medecine": "Médecine, soins infirmiers, anatomie/physiologie, pharmacologie, santé publique, premiers secours.",
+  "humanites": "Histoire, philosophie, littérature, civilisations, religions (études académiques).",
+  "arts_creation": "Musique, arts plastiques, design, photo/vidéo, écriture créative.",
+  "business_droit": "Gestion/finance/marketing/stratégie, droit civil/public/contrats, management.",
+  "soft_skills": "Compétences transversales: communication, rédaction pro, gestion du temps, créativité, travail d’équipe.",
+  "tests_concours": "Préparation examens/tests standardisés (bac, brevet, TOEIC, IELTS, DELF/DALF, HSK, JLPT, SAT, GRE…).",
+  "metiers_pro": "Compétences professionnelles et métiers: bureautique, sécurité, commerce, hôtellerie-restauration, artisanat."
+}

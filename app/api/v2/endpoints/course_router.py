@@ -16,6 +16,7 @@ from app.models.course.vocabulary_item_model import VocabularyItem
 from app.models.course.chapter_model import Chapter
 from app.models.course.level_model import Level
 from app.models.course.course_model import Course
+from app.services.course_generator import CourseGenerator
 from app.models.progress.user_node_progress_model import UserNodeProgress
 from app.core import ai_service
 from app.crud.course import course_crud
@@ -269,3 +270,91 @@ def read_course_knowledge_graph(
         edges=edges_from_db
     )
 
+from app.services.classification_service import db_classifier # Importez le classifieur
+from app.api.v2.dependencies import get_db # Assurez-vous d'avoir un get_db
+
+@router.post("/classify-topic/", summary="Classifier un sujet")
+def classify_topic(
+    text_input: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Prend un texte en entrée et retourne la meilleure catégorie de la taxonomie.
+    """
+    print("PIKKAAAACHUUUUU")
+    if not text_input.strip():
+        raise HTTPException(status_code=400, detail="Le texte ne peut pas être vide.")
+
+    predictions = db_classifier.classify(text_input, db, top_k=1)
+    if not predictions:
+        raise HTTPException(status_code=404, detail="Aucune catégorie correspondante trouvée.")
+
+    return predictions[0]
+
+
+import json # Assurez-vous d'importer json
+from app.models.analytics.vector_store_model import VectorStore
+
+
+@router.get("/plan/{course_title}", summary="Récupérer un plan de cours existant")
+def get_course_plan(
+    course_title: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Recherche dans la base vectorielle un plan de cours pré-existant pour un sujet donné.
+    """
+    print(f"Recherche d'un plan de cours pour le sujet : {course_title}")
+    
+    # On cherche un 'course_plan' qui correspond exactement au titre
+    plan_entry = db.query(VectorStore).filter(
+        VectorStore.content_type == 'course_plan',
+        VectorStore.skill == course_title.lower() # On cherche en minuscule pour plus de robustesse
+    ).first()
+
+    if not plan_entry:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Aucun plan de cours pré-existant trouvé pour '{course_title}'."
+        )
+
+    # Le plan est stocké en texte JSON, on le parse avant de le renvoyer
+    try:
+        plan_data = json.loads(plan_entry.chunk_text)
+        return plan_data
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500, 
+            detail="Le plan de cours stocké est mal formaté."
+        )
+
+
+@router.post("/full-creation", response_model=course_schema.CourseReadMinimal, status_code=202)
+def create_full_course(
+    course_in: course_schema.CourseCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Lance la création d'un cours complet.
+    1. Classifie le sujet pour obtenir le 'course_type'.
+    2. Crée une entrée "brouillon" en BDD avec toutes les infos requises.
+    3. Lance la génération du contenu en tâche de fond.
+    4. Retourne immédiatement les informations du cours "brouillon".
+    """
+    print(f"Requête de création de cours complet pour : '{course_in.title}' par {current_user.email}")
+    
+    generator = CourseGenerator(db=db, course_in=course_in, creator=current_user)
+    
+    try:
+        # Cette nouvelle méthode gère la création initiale et retourne l'objet cours
+        # Elle résout le problème de NotNullViolation en classifiant d'abord.
+        initial_course = generator.initialize_course_and_start_generation(background_tasks)
+        return initial_course
+    except HTTPException as e:
+        # Fait remonter les erreurs si la classification échoue
+        raise e
+    except Exception as e:
+        print(f"Erreur inattendue lors de l'initialisation du cours '{course_in.title}': {e}")
+        raise HTTPException(status_code=500, detail="Erreur interne lors de l'initialisation du cours.")

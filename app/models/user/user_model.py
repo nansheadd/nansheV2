@@ -10,6 +10,9 @@ if TYPE_CHECKING:
     from ..progress.user_course_progress_model import UserCourseProgress
     from ..progress.user_knowledge_strength_model import UserKnowledgeStrength
     from ..progress.user_answer_log_model import UserAnswerLog
+    from .notification_model import Notification  # <-- NOUVEL IMPORT
+    from .badge_model import UserBadge 
+    from ..capsule.capsule_model import Capsule, UserCapsuleProgress, UserCapsuleEnrollment
 
 class User(Base):
     """
@@ -27,10 +30,37 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
+    xp_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    level: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+    
+    enrollments: Mapped[List["UserCapsuleEnrollment"]] = relationship(
+        "UserCapsuleEnrollment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
     course_progress: Mapped[List["UserCourseProgress"]] = relationship(back_populates="user")
     knowledge_strength: Mapped[List["UserKnowledgeStrength"]] = relationship(back_populates="user")
     answer_logs: Mapped[List["UserAnswerLog"]] = relationship(back_populates="user")
+    character_strengths = relationship("UserCharacterStrength", back_populates="user", cascade="all, delete-orphan")
+    vocabulary_strengths = relationship("UserVocabularyStrength", back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[List["Notification"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    user_badges: Mapped[List["UserBadge"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    created_capsules: Mapped[List["Capsule"]] = relationship(
+        "Capsule", back_populates="creator"
+    )
+
+    # 2. Pour lier un utilisateur à sa progression dans toutes les capsules
+    capsule_progress: Mapped[List["UserCapsuleProgress"]] = relationship(
+        "UserCapsuleProgress", 
+        back_populates="user", 
+        cascade="all, delete-orphan"
+    )
+    
+    @property
+    def badges(self):
+        return [user_badge.badge for user_badge in self.user_badges]
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}')>"
