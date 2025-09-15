@@ -1,5 +1,5 @@
 # Fichier: backend/app/schemas/progress_schema.py
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any
 
 class AnswerCreate(BaseModel):
@@ -8,6 +8,13 @@ class AnswerCreate(BaseModel):
     """
     component_id: int
     user_answer_json: Dict[str, Any] # ex: {"selected_option": 2}
+
+
+class AnswerLogCreate(BaseModel):
+    atom_id: int
+    is_correct: bool
+    # On utilise Field(..., alias='answer') pour que le frontend puisse envoyer "answer"
+    user_answer: Dict[str, Any] = Field(..., alias='answer')
 
 class AnswerResult(BaseModel):
     """

@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 
 from app.core.config import settings
+from app.models.user.user_model import User
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.granule_model import Granule
 from app.models.capsule.molecule_model import Molecule
 from app.models.capsule.atom_model import Atom, AtomContentType # <-- NOUVEL IMPORT
 from app.models.analytics.vector_store_model import VectorStore
+from app.models.capsule.language_roadmap_model import LanguageRoadmap # <-- Importer le bon modèle
+
 from app.services.rag_utils import get_embedding
 
 logger = logging.getLogger(__name__)
@@ -31,12 +34,13 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
     # ========================================================================
     # SECTION 1 : LOGIQUE EXISTANTE (INCHANGÉE)
     # ========================================================================
-    def __init__(self, db: Session, capsule: Capsule):
+    def __init__(self, db: Session, capsule: Capsule, user: User):
         """
         Initialise le builder avec la session de base de données et la capsule cible.
         """
         self.db = db
         self.capsule = capsule
+        self.user = user
 
 
     def get_details(self, db: Session, user, capsule: Capsule, **kwargs) -> dict:
@@ -136,19 +140,36 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         )
         db.add(new_vector_entry)
 
-    def _find_inspirational_examples(self, db: Session, domain: str, area: str, limit: int = 3) -> list[dict]:
-        # ... (code existant inchangé)
+    def _find_inspirational_examples(self, db: Session, domain: str, area: str, limit: int = 3) -> List[Dict[str, Any]]:
+        """
+        Trouve des plans d'apprentissage existants pour servir d'exemples (RAG).
+        CORRIGÉ: Interroge maintenant la table LanguageRoadmap.
+        """
         logger.info(f"  [RAG] Recherche de {limit} exemples pour {domain}/{area}...")
-        examples = db.query(Capsule).filter(
-            Capsule.domain == domain,
-            Capsule.area == area,
-            Capsule.learning_plan_json.isnot(None)
-        ).limit(limit).all()
-        if examples:
-            logger.info(f"  [RAG] -> ✅ {len(examples)} exemples trouvés.")
-            return [{"main_skill": ex.main_skill, "plan": ex.learning_plan_json} for ex in examples]
-        return []
 
+        # --- CORRECTION ---
+        # On interroge LanguageRoadmap et on joint Capsule pour filtrer
+        query = (
+            db.query(LanguageRoadmap, Capsule)
+            .join(Capsule, LanguageRoadmap.capsule_id == Capsule.id)
+            .filter(
+                Capsule.domain == domain,
+                Capsule.area == area,
+                LanguageRoadmap.roadmap_data.isnot(None)
+            )
+            .limit(limit)
+            .all()
+        )
+
+        examples = []
+        for roadmap, capsule in query:
+            examples.append({
+                "main_skill": capsule.main_skill,
+                "plan": roadmap.roadmap_data  # On utilise les données de la roadmap
+            })
+        
+        return examples
+    
     def _generate_plan_with_openai(self, capsule: Capsule, rag_examples: list[dict]) -> dict | None:
         # ... (code existant inchangé)
         if not openai_client: return None
@@ -163,7 +184,7 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
             user_prompt += f"\n\nInspire-toi de la structure et de la qualité de ces excellents plans. NE COPIE PAS le contenu, utilise-les comme modèle de qualité:\n{examples_str}"
         try:
             response = openai_client.chat.completions.create(
-                model="gpt-4-turbo",
+                model="gpt-5-mini-2025-08-07",
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                 response_format={"type": "json_object"}
             )
@@ -236,17 +257,16 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         created_atoms = []
         for i, atom_info in enumerate(recipe):
             atom_type = atom_info["type"]
-            atom_title = atom_info.get("title", atom_type.value.replace('_', ' ').capitalize())
-            
-            # Intégration de la logique de cache ici !
-            content = self._find_atom_in_vector_store(self.db, self.capsule, molecule, atom_type.name)
-            
-            if not content:
-                # Si non trouvé en cache, on fabrique le contenu
-                content = self._build_atom_content(atom_type, molecule, created_atoms)
-                if content:
-                    # Et on le sauvegarde en cache pour la prochaine fois
-                    self._save_atom_to_vector_store(self.db, self.capsule, molecule, atom_type.name, content)
+            atom_title = atom_info.get("title", "...")
+            # --- On récupère la difficulté de la recette ---
+            atom_difficulty = atom_info.get("difficulty") 
+
+            content = self._build_atom_content(
+                atom_type, 
+                molecule, 
+                created_atoms, 
+                difficulty=atom_difficulty # <-- On la passe à la méthode de construction
+            )
             
             if content:
                 new_atom = Atom(
@@ -254,6 +274,7 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
                     order=i + 1,
                     content_type=atom_type,
                     content=content,
+                    difficulty=atom_difficulty, # <-- On la sauvegarde dans le modèle
                     molecule_id=molecule.id
                 )
                 self.db.add(new_atom)

@@ -1,4 +1,4 @@
-# Fichier: backend/scripts/run_seeds.py
+# Fichier: backend/scripts/run_seeds.py (CORRIGÉ)
 
 import json
 import logging
@@ -14,6 +14,12 @@ from app.db.session import SessionLocal
 from app.models.capsule.capsule_model import Capsule, GenerationStatus
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.user.user_model import User
+from app.models.capsule.language_roadmap_model import (
+    LanguageRoadmap, # <-- NOUVEL IMPORT
+    Skill, LanguageRoadmapLevel, LevelSkillTarget, LevelFocus,
+    LevelCheckpoint, LevelReward, CEFRBand, FocusType, SkillType, Unit,
+    TargetMeasurement, CheckType, RewardType
+)
 from app.services.rag_utils import get_embedding
 
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # --- Chemins vers les fichiers de données ---
 CLASSIFIER_TRAINING_FILE = Path(__file__).resolve().parent.parent / "app" / "data" / "training_data.jsonl"
-PLANS_FILE = Path(__file__).resolve().parent.parent / "app" / "data" / "plan_foreing_langue.jsonl"
+PLANS_FILE = Path(__file__).resolve().parent.parent / "app" / "data" / "tree.jsonl"
 
 
 def get_or_create_default_user(db: Session) -> User:
@@ -54,7 +60,6 @@ def seed_classifier_examples(db: Session):
 
                 if not text or not main_skill: continue
 
-                # On vérifie si cet exemple exact existe déjà pour ne pas le dupliquer
                 exists = db.query(VectorStore).filter(VectorStore.chunk_text == text).first()
                 if not exists:
                     new_vector = VectorStore(
@@ -71,11 +76,46 @@ def seed_classifier_examples(db: Session):
     logger.info(f"✅ Phase 1 terminée: {count} nouveaux exemples d'entraînement ajoutés.")
 
 
-def seed_golden_learning_plans(db: Session, system_user: User):
-    """Charge les plans de cours complets (golden records) dans les tables Capsule et VectorStore."""
-    logger.info("--- Phase 2: Seeding des plans de cours 'golden records' ---")
+def seed_skills(db: Session):
+    """Crée le référentiel de compétences de base dans la table 'skills'."""
+    logger.info("--- Phase 2: Seeding de la taxonomie des compétences (Skills) ---")
+    skills_taxonomy = [
+        {"code": "vocabulary", "name": "Vocabulaire", "unit": Unit.items, "type": SkillType.core},
+        {"code": "grammar", "name": "Grammaire", "unit": Unit.rules, "type": SkillType.core},
+        {"code": "verbs", "name": "Verbes", "unit": Unit.verbs, "type": SkillType.core},
+        {"code": "characters", "name": "Caractères/Écriture", "unit": Unit.chars, "type": SkillType.core},
+        {"code": "pronunciation", "name": "Prononciation", "unit": Unit.accuracy, "type": SkillType.subskill},
+        {"code": "mechanics", "name": "Mécaniques de langue", "unit": Unit.rules, "type": SkillType.subskill},
+        {"code": "connectors", "name": "Connecteurs logiques", "unit": Unit.items, "type": SkillType.subskill},
+        {"code": "idioms", "name": "Expressions idiomatiques", "unit": Unit.items, "type": SkillType.subskill},
+        {"code": "register", "name": "Registre de langue", "unit": Unit.rubric, "type": SkillType.extra_data},
+        {"code": "listening", "name": "Compréhension orale", "unit": Unit.minutes, "type": SkillType.core},
+        {"code": "speaking", "name": "Expression orale", "unit": Unit.minutes, "type": SkillType.core},
+        {"code": "reading", "name": "Compréhension écrite", "unit": Unit.tasks, "type": SkillType.core},
+        {"code": "writing", "name": "Expression écrite", "unit": Unit.tasks, "type": SkillType.core},
+    ]
+
+    count = 0
+    for skill_data in skills_taxonomy:
+        exists = db.query(Skill).filter(Skill.code == skill_data["code"]).first()
+        if not exists:
+            db.add(Skill(**skill_data))
+            count += 1
+    
+    db.commit()
+    logger.info(f"✅ Phase 2 terminée: {count} nouvelles compétences ajoutées.")
+
+
+def seed_language_roadmaps(db: Session, system_user: User):
+    """Charge les roadmaps complètes à partir du JSONL et peuple les tables normalisées."""
+    logger.info("--- Phase 3: Seeding des Roadmaps de langue ---")
     if not PLANS_FILE.exists():
         logger.error(f"❌ Fichier de plans non trouvé : {PLANS_FILE}")
+        return
+
+    skills_map = {skill.code: skill for skill in db.query(Skill).all()}
+    if not skills_map:
+        logger.error("❌ La table des compétences (skills) est vide. Exécutez d'abord seed_skills.")
         return
 
     count_added = 0
@@ -87,46 +127,82 @@ def seed_golden_learning_plans(db: Session, system_user: User):
                 main_skill = data.get("main_skill")
                 if not main_skill: continue
 
-                # On cherche une capsule existante pour ce main_skill (insensible à la casse)
+                # --- 1. GESTION DE LA CAPSULE ---
                 capsule = db.query(Capsule).filter(func.lower(Capsule.main_skill) == main_skill.lower()).first()
-
-                if capsule:
-                    capsule.learning_plan_json = data.get("learning_plan")
-                    count_updated += 1
-                else:
+                if not capsule:
+                    logger.info(f"Création de la capsule pour '{main_skill}'...")
                     capsule = Capsule(
                         title=f"Cours de {main_skill.capitalize()}", main_skill=main_skill,
                         domain=data.get("domain"), area=data.get("area"),
-                        learning_plan_json=data.get("learning_plan"),
                         creator_id=system_user.id, generation_status=GenerationStatus.COMPLETED,
                         is_public=True
                     )
                     db.add(capsule)
+                    db.flush() 
                     count_added += 1
+                else:
+                    logger.info(f"Mise à jour de la roadmap pour '{main_skill}'...")
+                    count_updated += 1
+                
+                # --- 2. GESTION DE LA ROADMAP PARENTE ---
+                # On supprime l'ancienne roadmap de l'utilisateur système pour la reconstruire
+                db.query(LanguageRoadmap).filter(
+                    LanguageRoadmap.capsule_id == capsule.id,
+                    LanguageRoadmap.user_id == system_user.id
+                ).delete()
+                db.flush()
 
-                # On ajoute une entrée DÉDIÉE au main_skill dans la VectorStore pour la recherche exacte
-                vector_exists = db.query(VectorStore).filter(
-                    func.lower(VectorStore.skill) == main_skill.lower(),
-                    VectorStore.chunk_text == main_skill # Entrée exacte
-                ).first()
+                # On crée la nouvelle roadmap parente
+                new_roadmap = LanguageRoadmap(
+                    user_id=system_user.id,
+                    capsule_id=capsule.id,
+                    roadmap_data=data 
+                )
+                db.add(new_roadmap)
+                db.flush() # Pour obtenir l'ID de la roadmap
+
+                # --- 3. GESTION DES NIVEAUX (LanguageRoadmapLevel) ---
+                for level_data in data.get("levels", []):
+                    new_level = LanguageRoadmapLevel(
+                        roadmap_id=new_roadmap.id, # <-- CORRECTION CLÉ
+                        level=level_data["level"],
+                        cefr_level=CEFRBand(level_data["cefr_level"]),
+                        xp_range_start=level_data["xp_range_start"],
+                        xp_range_end=level_data["xp_range_end"]
+                    )
+                    db.add(new_level)
+                    db.flush() 
+
+                    # 4. Créer les objets liés (targets, focuses, etc.)
+                    for target_data in level_data.get("skill_targets", []):
+                        skill = skills_map.get(target_data["skill_code"])
+                        if skill:
+                            db.add(LevelSkillTarget(level_id=new_level.id, skill_id=skill.id, target_value=target_data["target_value"], measurement=TargetMeasurement(target_data["measurement"]), criteria=target_data.get("criteria", {})))
+                    for focus_data in level_data.get("focuses", []):
+                        db.add(LevelFocus(level_id=new_level.id, type=FocusType(focus_data["type"]), label=focus_data["label"]))
+                    for checkpoint_data in level_data.get("checkpoints", []):
+                        db.add(LevelCheckpoint(level_id=new_level.id, type=CheckType(checkpoint_data["type"]), title=checkpoint_data["title"], min_score=checkpoint_data["min_score"]))
+                    for reward_data in level_data.get("rewards", []):
+                        db.add(LevelReward(level_id=new_level.id, type=RewardType(reward_data["type"]), code=reward_data["code"], name=reward_data["name"], extra_data=reward_data.get("extra_data", {})))
+                
+                vector_exists = db.query(VectorStore).filter(func.lower(VectorStore.skill) == main_skill.lower()).first()
                 if not vector_exists:
-                     db.add(VectorStore(
-                        chunk_text=main_skill, embedding=get_embedding(main_skill),
-                        domain=data.get("domain"), area=data.get("area"), skill=main_skill
-                    ))
-            except json.JSONDecodeError:
+                     db.add(VectorStore(chunk_text=main_skill, embedding=get_embedding(main_skill), domain=data.get("domain"), area=data.get("area"), skill=main_skill))
+
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.error(f"Erreur de parsing sur une ligne du fichier de plans : {e}")
                 continue
     db.commit()
-    logger.info(f"✅ Phase 2 terminée: {count_added} plans ajoutés, {count_updated} mis à jour.")
+    logger.info(f"✅ Phase 3 terminée: {count_added} roadmaps ajoutées, {count_updated} mises à jour.")
+
 
 
 if __name__ == "__main__":
     db_session = SessionLocal()
     try:
-        # On récupère l'utilisateur système une seule fois
         user = get_or_create_default_user(db_session)
-        # On exécute les deux phases de seeding
         seed_classifier_examples(db_session)
-        seed_golden_learning_plans(db_session, user)
+        seed_skills(db_session)
+        seed_language_roadmaps(db_session, user)
     finally:
         db_session.close()

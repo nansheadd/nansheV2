@@ -363,7 +363,7 @@ class UserCourseProgressAdmin(ModelView, model=UserCourseProgress):
     icon = "fa-solid fa-chart-line"
     column_list = [
         UserCourseProgress.user,
-        UserCourseProgress.course,
+        UserCourseProgress.capsule,
         UserCourseProgress.status,
         UserCourseProgress.current_level_order,
         UserCourseProgress.current_chapter_order,
@@ -372,7 +372,7 @@ class UserCourseProgressAdmin(ModelView, model=UserCourseProgress):
 
     column_formatters = {
         UserCourseProgress.user: lambda m, a: m.user.username if m.user else "",
-        UserCourseProgress.course: lambda m, a: m.course.title if m.course else "",
+        UserCourseProgress.capsule: lambda m, a: m.capsule.title if m.capsule else "",
     }
 
     column_searchable_list = [UserCourseProgress.status]

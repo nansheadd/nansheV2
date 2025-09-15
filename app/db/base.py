@@ -21,8 +21,17 @@ from app.models.capsule.atom_model import Atom
 from app.models.capsule.language_roadmap_model import LanguageRoadmapLevel
 from app.models.capsule.utility_models import (
     UserCapsuleEnrollment, 
-    Skill, 
     UserCapsuleProgress
+)
+
+# On importe tous les nouveaux modèles de roadmap depuis leur fichier unique
+from app.models.capsule.language_roadmap_model import (
+    LanguageRoadmapLevel,
+    Skill,
+    LevelSkillTarget,
+    LevelFocus,
+    LevelCheckpoint,
+    LevelReward
 )
 
 # 3. Anciens modèles de cours (si toujours utilisés)

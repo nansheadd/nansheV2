@@ -5,7 +5,7 @@ from app.db.base_class import Base
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..progress.user_course_progress_model import UserCourseProgress
+
     from .level_model import Level
     from .character_model import CharacterSet
     from .knowledge_graph_model import KnowledgeNode
@@ -37,7 +37,6 @@ class Course(Base):
     # ------------------------------------
 
     # --- Relations ---
-    progressions: Mapped[List["UserCourseProgress"]] = relationship(back_populates="course")
     levels: Mapped[List["Level"]] = relationship(back_populates="course")
     character_sets: Mapped[List["CharacterSet"]] = relationship(back_populates="course")
     knowledge_nodes: Mapped[List["KnowledgeNode"]] = relationship(back_populates="course", cascade="all, delete-orphan")

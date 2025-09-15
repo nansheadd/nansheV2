@@ -4,6 +4,7 @@ from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.progress.user_activity_log_model import UserActivityLog
+from app.models.user.user_model import User  # <-- Import the User model
 
 from app.models.capsule.atom_model import Atom
 
@@ -23,6 +24,8 @@ class ProgressService:
     def __init__(self, db: Session, user_id: int):
         self.db = db
         self.user_id = user_id
+        # Fetch the user and assign it to self.user
+        self.user = self.db.query(User).get(self.user_id)
 
     def start_activity(self, capsule_id: int, atom_id: int) -> int:
         """Démarre le suivi d'une activité et retourne l'ID du log."""
@@ -66,7 +69,7 @@ class ProgressService:
         duration = func.extract('epoch', UserActivityLog.end_time) - func.extract('epoch', UserActivityLog.start_time)
         
         total_seconds = self.db.query(func.sum(duration)).filter(
-            UserActivityLog.user_id == self.user.id,
+            UserActivityLog.user_id == self.user_id, # <-- Use self.user_id directly
             UserActivityLog.end_time.isnot(None)
         ).scalar()
 

@@ -11,6 +11,7 @@ from .endpoints import(
     knowledge_node_router,
     nlp_router,
     capsule_router,
+    notification_router,
 )
 
 api_router = APIRouter()
@@ -26,4 +27,6 @@ api_router.include_router(knowledge_node_router.router, prefix="/nodes", tags=["
 api_router.include_router(knowledge_node_router.router, prefix="/knowledge-nodes", tags=["Knowledge Nodes"])
 api_router.include_router(nlp_router.router, prefix="/nlp", tags=["Nlp"])
 api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Capsule"])
+api_router.include_router(notification_router.router, prefix="/notifications", tags=["Notifications"])
+
 

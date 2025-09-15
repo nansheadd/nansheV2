@@ -7,7 +7,6 @@ from typing import List, Dict, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from .chapter_model import Chapter
     from ..progress.user_knowledge_strength_model import UserKnowledgeStrength
-    from ..progress.user_answer_log_model import UserAnswerLog
 
 class KnowledgeComponent(Base):
     __tablename__ = "knowledge_components"
@@ -34,9 +33,7 @@ class KnowledgeComponent(Base):
     user_strengths: Mapped[List["UserKnowledgeStrength"]] = relationship(
         "UserKnowledgeStrength", back_populates="knowledge_component", cascade="all, delete-orphan"
     )
-    user_answers: Mapped[List["UserAnswerLog"]] = relationship(
-        "UserAnswerLog", back_populates="knowledge_component", cascade="all, delete-orphan"
-    )
+
 
     def __repr__(self):
         return f"<KnowledgeComponent(id={self.id}, title='{self.title}')>"

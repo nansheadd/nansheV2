@@ -9,8 +9,14 @@ from app.db.base_class import Base
 if TYPE_CHECKING:
     from app.models.user.user_model import User
     from .granule_model import Granule
+    from .language_roadmap_model import LanguageRoadmap
+    
+    # --- CORRECTION FINALE ---
+    # On supprime les imports incorrects et on garde UNIQUEMENT
+    # ceux qui proviennent de utility_models.py pour la progression.
+    from app.models.progress.user_course_progress_model import UserCourseProgress
+
     from .utility_models import UserCapsuleEnrollment, UserCapsuleProgress
-    from .language_roadmap_model import LanguageRoadmapLevel 
 
 
 class GenerationStatus(str, enum.Enum):
@@ -36,18 +42,24 @@ class Capsule(Base):
         default=GenerationStatus.PENDING, 
         nullable=False
     )
-    learning_plan_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
 
-    language_roadmap: Mapped[List["LanguageRoadmapLevel"]] = relationship(
-        back_populates="capsule", cascade="all, delete-orphan"
-    )
+    
     # --- Relations ---
     creator: Mapped["User"] = relationship(back_populates="created_capsules")
     granules: Mapped[List["Granule"]] = relationship(
         back_populates="capsule", cascade="all, delete-orphan"
     )
+    roadmaps: Mapped[List["LanguageRoadmap"]] = relationship(back_populates="capsule", cascade="all, delete-orphan")
+
     user_enrollments: Mapped[List["UserCapsuleEnrollment"]] = relationship(back_populates="capsule")
-    user_progress_entries: Mapped[List["UserCapsuleProgress"]] = relationship(back_populates="capsule")
+    progressions: Mapped[List["UserCapsuleProgress"]] = relationship(back_populates="capsule")
+
+    course_progress: Mapped[List["UserCourseProgress"]] = relationship(
+        back_populates="capsule",
+        cascade="all, delete-orphan",
+    )
+    
+ 
 
     def __repr__(self):
         return f"<💊Capsule(id={self.id}, title='{self.title}')>"

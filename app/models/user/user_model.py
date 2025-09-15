@@ -1,18 +1,27 @@
-# Fichier: nanshe/backend/app/models/user_model.py
+# Fichier: nanshe/backend/app/models/user_model.py (VERSION FINALE CORRIGÉE)
 
-from sqlalchemy import Integer, String, Boolean, DateTime, func # type: ignore
-from sqlalchemy.orm import Mapped, mapped_column, relationship # type: ignore
+from sqlalchemy import Integer, String, Boolean, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
 from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
 
+# --- IMPORTS NETTOYÉS ---
 if TYPE_CHECKING:
+    # On supprime toutes les références à l'ancien système de progression
+    from .notification_model import Notification
+    from .badge_model import UserBadge
+    from ..capsule.capsule_model import Capsule
+    from app.models.progress.user_character_strength_model import UserCharacterStrength
+    from app.models.progress.user_vocabulary_strenght_model import UserVocabularyStrength
     from ..progress.user_course_progress_model import UserCourseProgress
+
+    from ..capsule.utility_models import UserCapsuleProgress, UserCapsuleEnrollment # <-- La seule source de vérité
+    from ..capsule.language_roadmap_model import LanguageRoadmap
+    # Les autres imports de l'ancien système de progression sont supprimés
     from ..progress.user_knowledge_strength_model import UserKnowledgeStrength
     from ..progress.user_answer_log_model import UserAnswerLog
-    from .notification_model import Notification  # <-- NOUVEL IMPORT
-    from .badge_model import UserBadge 
-    from ..capsule.capsule_model import Capsule, UserCapsuleProgress, UserCapsuleEnrollment
+
 
 class User(Base):
     """
@@ -20,6 +29,7 @@ class User(Base):
     """
     __tablename__ = "users"
 
+    # --- Champs (inchangés) ---
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -32,31 +42,43 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
     xp_points: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     level: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
-
     
-    enrollments: Mapped[List["UserCapsuleEnrollment"]] = relationship(
-        "UserCapsuleEnrollment",
+    # --- RELATIONS CORRIGÉES ET COHÉRENTES ---
+    
+    character_strengths: Mapped[List["UserCharacterStrength"]] = relationship(
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+    )
+
+    vocabulary_strengths: Mapped[List["UserVocabularyStrength"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    # ⚠️ Très probablement nécessaire aussi (voir ci-dessous)
+    enrollments: Mapped[List["UserCapsuleEnrollment"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    roadmaps: Mapped[List["LanguageRoadmap"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    
+    created_capsules: Mapped[List["Capsule"]] = relationship(
+        back_populates="creator"
+    )
+
+    capsule_progress: Mapped[List["UserCapsuleProgress"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
     course_progress: Mapped[List["UserCourseProgress"]] = relationship(back_populates="user")
+
+
+    # Les autres relations qui n'ont pas de lien avec "Course" peuvent rester
     knowledge_strength: Mapped[List["UserKnowledgeStrength"]] = relationship(back_populates="user")
     answer_logs: Mapped[List["UserAnswerLog"]] = relationship(back_populates="user")
-    character_strengths = relationship("UserCharacterStrength", back_populates="user", cascade="all, delete-orphan")
-    vocabulary_strengths = relationship("UserVocabularyStrength", back_populates="user", cascade="all, delete-orphan")
     notifications: Mapped[List["Notification"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     user_badges: Mapped[List["UserBadge"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    created_capsules: Mapped[List["Capsule"]] = relationship(
-        "Capsule", back_populates="creator"
-    )
-
-    # 2. Pour lier un utilisateur à sa progression dans toutes les capsules
-    capsule_progress: Mapped[List["UserCapsuleProgress"]] = relationship(
-        "UserCapsuleProgress", 
-        back_populates="user", 
-        cascade="all, delete-orphan"
-    )
     
     @property
     def badges(self):

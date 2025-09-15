@@ -150,11 +150,16 @@ def _call_ai_model_json(user_prompt: str, model_choice: str, system_prompt: str 
         temp = None if use_openai else (0.2 if attempt == 0 else 0.0)
         sys_used = sys_base if attempt == 0 else (sys_base + repair)
         try:
-            if model_choice == "local": raw = _call_local_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp or 0.0)
-            elif use_openai: raw = _call_openai_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
-            else:
-                full_prompt = f"{sys_used}\n\n{user_prompt}".strip()
-                raw = _call_gemini(full_prompt, temperature=temp or 0.2)
+            if model_choice == "local": 
+                raw = _call_local_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp or 0.0)
+            
+            # --- CORRECTION : On force l'utilisation d'OpenAI ---
+            # Si le modèle commence par "openai_" OU si c'est le cas par défaut, on utilise OpenAI.
+            else: 
+                raw = _call_openai_llm(user_prompt=user_prompt, system_prompt=sys_used, temperature=temp)
+            
+            # La partie qui appelait Gemini est maintenant ignorée.
+
             data = safe_json_loads(raw)
             if isinstance(data, list): data = {"exercises": data}
             return data
@@ -163,7 +168,8 @@ def _call_ai_model_json(user_prompt: str, model_choice: str, system_prompt: str 
             logger.warning(f"Tentative JSON {attempt+1}/{max_retries+1} échouée: {e}")
     raise last_exc if last_exc else RuntimeError("Échec d'appel JSON sans exception d'origine.")
 
-# ... (toutes vos autres fonctions de generate_learning_plan à continue_ai_discussion restent inchangées) ...
+
+
 def classify_course_topic(title: str, model_choice: str) -> str:
     system_prompt = prompt_manager.get_prompt("course_planning.classify_topic", ensure_json=True)
     try:
@@ -333,3 +339,104 @@ def generate_text_from_prompt(prompt: str, model_choice: str) -> str:
     except Exception as e:
         logger.error(f"Erreur lors de l'appel RAG via _call_ai_model_json: {e}", exc_info=True)
         return "" # Retourner une chaîne vide en cas d'échec
+    
+
+
+#### ATOMS IA #####
+
+def generate_contextual_lesson(
+    course_plan_context: str, 
+    app_rules_context: str, 
+    target_lesson_title: str, 
+    model_choice: str
+) -> Dict[str, Any]:
+    """
+    Génère le contenu d'une leçon (atomes) en utilisant un contexte riche.
+    """
+    logger.info(f"IA Service: Génération de contenu contextualisé pour '{target_lesson_title}'")
+    
+    # On assemble le prompt système à partir des différents contextes
+    system_prompt = f"""
+        Tu es un ingénieur pédagogique expert chargé de créer le contenu d'une leçon spécifique au sein d'un cours plus large.
+
+        ---
+        CONTEXTE GLOBAL DU COURS (PLAN COMPLET):
+        {course_plan_context}
+        ---
+        INFORMATIONS SPÉCIFIQUES À NOTRE PLATEFORME:
+        {app_rules_context}
+        ---
+
+        [INSTRUCTIONS IMPORTANTES]
+        - Ton contenu doit se concentrer EXCLUSIVEMENT sur le titre de la leçon cible.
+        - Ne déborde PAS sur les sujets des autres leçons listées dans le contexte global.
+        - Ta réponse DOIT être un objet JSON unique contenant une clé "text" avec le contenu de la leçon.
+        - Le texte doit être clair, engageant et rédigé en Markdown.
+        - Tu dois vraiment donner le maximum de théorie avec des exemples si pertinent. NE PAS inclure d'exercices, de quiz ou de questions
+    """
+    
+    user_prompt = f"Génère le contenu pour la leçon : \"{target_lesson_title}\"."
+    
+    try:
+        # On utilise votre fonction existante pour appeler l'IA et garantir un JSON
+        return _call_ai_model_json(
+            user_prompt=user_prompt, 
+            model_choice=model_choice, 
+            system_prompt=system_prompt
+        )
+    except Exception as e:
+        logger.error(f"Erreur de génération de leçon contextualisée pour '{target_lesson_title}': {e}")
+        # On renvoie un contenu d'erreur pour ne pas bloquer le flux
+        return {"text": "Erreur lors de la génération du contenu de cette leçon."}
+    
+
+def generate_contextual_exercises(
+    lesson_text: str,
+    lesson_title: str,
+    course_type: str, # ex: 'generic', 'philosophy', etc.
+    difficulty: Optional[str], # <-- On ajoute le paramètre
+    model_choice: str
+) -> Dict[str, Any]:
+    """
+    Génère des exercices (ex: un QCM) basés sur le contenu d'une leçon fournie.
+    """
+    logger.info(f"IA Service: Génération d'exercices contextualisés pour '{lesson_title}'")
+    difficulty_instruction = f"La difficulté de la question doit être : {difficulty}." if difficulty else "La difficulté doit être moyenne."
+
+    system_prompt = f"""
+Tu es un concepteur pédagogique chargé de créer des exercices de validation pour une leçon.
+
+---
+CONTENU DE LA LEÇON À ÉVALUER:
+{lesson_text}
+---
+
+[INSTRUCTIONS IMPORTANTES]
+- Crée un exercice de type QCM (Question à Choix Multiples) basé STRICTEMENT sur le contenu de la leçon fournie.
+- La question doit être pertinente et tester une information clé de la leçon.
+- Avoir un niveau de difficulté : {difficulty_instruction} basé sur la leçon
+- Ta réponse DOIT être un objet JSON unique.
+- Le JSON doit avoir la structure suivante :
+  {{
+    "question": "Ta question ici",
+    "options": [
+      {{"text": "Option 1", "is_correct": false}},
+      {{"text": "Option 2", "is_correct": true}},
+      {{"text": "Option 3", "is_correct": false}}
+    ],
+    "explanation": "Une brève explication de pourquoi la bonne réponse est correcte."
+  }}
+"""
+    
+    user_prompt = f"Génère le QCM pour la leçon '{lesson_title}'."
+    
+    try:
+        # On utilise votre fonction existante qui garantit un retour JSON
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt
+        )
+    except Exception as e:
+        logger.error(f"Erreur de génération d'exercices pour '{lesson_title}': {e}")
+        return {} # On renvoie un objet vide en cas d'erreur

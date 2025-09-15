@@ -12,6 +12,7 @@ class AtomRead(BaseModel):
     order: int
     content_type: str
     content: Dict[str, Any]
+    difficulty: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -58,6 +59,7 @@ class CapsuleRead(BaseModel):
     is_public: bool
     generation_status: str
     learning_plan_json: Optional[Dict[str, Any]] = None
+    granules: List[GranuleRead] = []
     
     # On peut aussi inclure les granules si nécessaire
     # granules: List[GranuleRead] = []
@@ -107,3 +109,70 @@ class LearningSessionRead(BaseModel):
     """
     granule_title: str
     molecules: List[LearningSessionMolecule]
+
+class LanguageRoadmapRead(BaseModel):
+    id: int
+    roadmap_data: Dict[str, Any]
+
+    class Config:
+        from_attributes = True
+
+# Schéma principal qui combine Capsule et Roadmap
+class CapsuleReadWithRoadmap(CapsuleRead): # Assurez-vous que CapsuleRead existe déjà
+    language_roadmap: LanguageRoadmapRead | None = None
+
+
+# ==============================================================================
+# SECTION 5: SCHÉMAS DE CRÉATION (AJOUTS NÉCESSAIRES)
+# ==============================================================================
+from app.models.capsule.atom_model import AtomContentType
+
+class AtomCreate(BaseModel):
+    """Schéma pour la création d'un nouvel Atome."""
+    title: str
+    order: int
+    content_type: AtomContentType  # On utilise l'Enum de votre modèle
+    content: Dict[str, Any]
+    difficulty: Optional[str] = None
+    molecule_id: int
+
+class MoleculeCreate(BaseModel):
+    """Schéma pour la création d'une nouvelle Molécule."""
+    title: str
+    order: int
+    granule_id: int
+
+class GranuleCreate(BaseModel):
+    """Schéma pour la création d'un nouveau Granule."""
+    title: str
+    order: int
+    capsule_id: int
+
+# Renommons votre CapsuleCreate en CapsuleCreateRequest pour être plus explicite
+# sur le fait que c'est une requête de l'utilisateur.
+class CapsuleCreateRequest(BaseModel):
+    """
+    Schéma mis à jour pour correspondre au résultat de la classification
+    que le frontend envoie.
+    """
+    main_skill: str
+    domain: str
+    area: str
+    # On peut ajouter d'autres champs si nécessaire
+    # confidence: float
+    # input_text: str
+
+
+class CapsuleCreateInternal(BaseModel):
+    """Utilisé par le service pour créer la capsule dans la base de données."""
+    title: str
+    owner_id: int
+    # Ajoutez ici les champs de votre modèle Capsule qui sont obligatoires
+    # Par exemple, si `domain`, `area`, `main_skill` sont requis.
+    # Pour l'instant, on reste simple.
+    description: Optional[str] = None
+    domain: str = "Generic"
+    area: str = "General Knowledge"
+    main_skill: str = "Learning"
+    is_public: bool = False
+    generation_status: str = "PLANNING"

@@ -11,7 +11,7 @@ import re
 import unicodedata
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from openai import OpenAI
@@ -19,6 +19,7 @@ from openai import OpenAI
 from app.core.config import settings
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user import user_model
+from app.models.user.user_model import User
 from app.models.capsule import capsule_model, granule_model, atom_model, utility_models, molecule_model
 from app.models.analytics.vector_store_model import VectorStore
 from app.schemas.capsule import capsule_schema
@@ -28,6 +29,15 @@ from app.services.classification_service import db_classifier
 from app.services.capsule_addon.exercices.exercices_generator import ExerciseGeneratorService
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.services.rag_utils import get_embedding
+from app.services.services.capsule_service import CapsuleService
+from app.schemas.capsule import capsule_schema # Votre fichier de schémas
+from app.api.v2 import dependencies
+
+
+
+from app.crud import roadmap_crud
+from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
+from app.schemas.capsule.capsule_schema import CapsuleReadWithRoadmap # Le nouveau schéma
 
 
 
@@ -91,75 +101,132 @@ def clean_user_query(q: str) -> str:
 SECTION 4: GESTION DES CAPSULES (CRUD)
 ================================================================================
 """
-@router.post("/", response_model=capsule_schema.CapsuleRead, status_code=201, summary="Créer une nouvelle capsule")
-def create_capsule(
-    capsule_in: capsule_schema.CapsuleCreate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: user_model.User = Depends(get_current_user)
+@router.post(
+    "/", 
+    response_model=capsule_schema.CapsuleRead, # Utilise votre schéma CapsuleRead existant
+    status_code=status.HTTP_201_CREATED
+)
+def create_generic_capsule(
+    request: capsule_schema.CapsuleCreateRequest, # Utilise le schéma de requête que nous avons ajouté
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
 ):
     """
-    Reçoit une requête de création, classifie le sujet, et délègue
-    la création complète au CapsuleService.
+    Crée une nouvelle capsule générique à partir d'un sujet.
+    Génère le plan complet et le contenu de la première molécule.
     """
-    logger.info(f"\n--- [API] Reçu pour création: '{capsule_in.title}' ---")
+    # 3. Instanciation du service
+    # On crée une instance du service en lui passant la session db et l'utilisateur
+    # qui viennent des dépendances.
+    service = CapsuleService(db=db, user=current_user)
     
-    # ÉTAPE 1: Classifier le sujet (la seule logique restant dans le routeur)
-    cleaned_title = clean_user_query(capsule_in.title)
-    predictions = db_classifier.classify(cleaned_title, db, top_k=1)
+    # On appelle la nouvelle méthode que nous avons ajoutée au service.
+    capsule = service.create_capsule_from_classification(
+        classification_data=request.dict()
+    )
     
-    if not predictions:
-        raise HTTPException(status_code=422, detail="Impossible de classifier le sujet de la capsule.")
+    if not capsule:
+        raise HTTPException(status_code=500, detail="La création de la capsule a échoué.")
+    
+    return capsule
 
-    best_prediction = predictions[0]
-    category_info = best_prediction.get("category", {})
+
+# --- Endpoint de progression (JIT) ---
+@router.post(
+    "/molecules/{molecule_id}/complete",
+    response_model=List[capsule_schema.AtomRead] # Renvoie la liste des nouveaux atomes
+)
+def complete_molecule_and_get_next(
+    molecule_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
+):
+    """
+    Valide la fin d'une molécule et génère/renvoie le contenu de la suivante.
+    """
+    # On instancie le service de la même manière
+    service = CapsuleService(db=db, user=current_user)
     
-    classification_result = {
-        "input_text": cleaned_title,
-        "main_skill": category_info.get("name", "unknown"),
-        "domain": category_info.get("domain", "others"),
-        "area": category_info.get("area", "default"),
-        "confidence": best_prediction.get("confidence", 0)
-    }
+    # On appelle la méthode de génération JIT
+    next_atoms = service.generate_next_molecule_content(
+        completed_molecule_id=molecule_id
+    )
     
-    logger.info(f"--- [API] Classification réussie. Délégation au service...")
-    
-    # ÉTAPE 2: Appeler le service avec la bonne méthode et les bons arguments
-    capsule_service = CapsuleService(db, current_user)
-    try:
-        # --- CORRECTION ICI ---
-        # On appelle 'create_capsule' et on ne passe plus le titre brut.
-        new_capsule = capsule_service.create_capsule(
-            background_tasks=background_tasks,
-            classification_result=classification_result
+    # Si la liste est vide, c'est qu'il n'y a pas de molécule suivante
+    if not next_atoms:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="La molécule suivante n'a pas été trouvée ou la capsule est terminée."
         )
-        # ---------------------
+        
+    return next_atoms
 
-        logger.info(f"--- [API] Succès. Renvoi de la capsule ID: {new_capsule.id} ---")
-        return new_capsule
-    except Exception as e:
-        logger.error(f"Erreur lors de la création de la capsule via le service: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erreur interne lors de la création de la capsule.")
+
+@router.get(
+    "/molecules/{molecule_id}/atoms",
+    response_model=List[capsule_schema.AtomRead],
+    summary="Récupérer ou générer les atomes pour une molécule"
+)
+def get_atoms_for_molecule(
+    molecule_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
+):
+    """
+    Récupère la liste des atomes pour une molécule spécifique.
+    Si les atomes n'ont pas encore été générés, cette route déclenche
+    leur création par le builder approprié.
+    """
+    service = CapsuleService(db=db, user=current_user)
+    atoms = service.get_or_generate_atoms_for_molecule(molecule_id=molecule_id)
     
+    if not atoms:
+        # Cela peut arriver si la génération échoue ou si la recette est vide.
+        # Le frontend peut afficher un message approprié.
+        return []
+        
+    return atoms
 
-@router.get("/{domain}/{area}/{capsule_id}", response_model=capsule_schema.CapsuleRead, summary="Récupérer une capsule par son chemin")
+def log_all_capsules(db: Session):
+    capsules = db.query(capsule_model.Capsule).all()
+    for cap in capsules:
+        logger.info(f"[DB] Capsule: {cap.__dict__}")
+
+@router.get(
+    "/{domain}/{area}/{capsule_id}",
+    response_model=capsule_schema.CapsuleReadWithRoadmap # ou CapsuleRead si vous n'avez pas de roadmap pour tout
+)
 def get_capsule(
     domain: str,
     area: str,
     capsule_id: int,
-    db: Session = Depends(get_db),
-    current_user: user_model.User = Depends(get_current_user)
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user)
 ):
+    """
+    Récupère les détails d'une capsule, quelle que soit sa catégorie.
+    """
     logger.info(f"--- [API] Requête pour récupérer la capsule ID: {capsule_id} via {domain}/{area} ---")
+    
     capsule = get_capsule_by_path(
-        db=db, user=current_user, domain=domain, area=area, capsule_id=capsule_id
+        db=db, 
+        user=current_user, 
+        domain=domain, 
+        area=area, 
+        capsule_id=capsule_id
     )
 
     if not capsule:
-        logger.warning(f"--- [API] Capsule ID {capsule_id} non trouvée.")
-        raise HTTPException(status_code=404, detail="Capsule non trouvée")
-    
-    logger.info(f"--- [API] Capsule trouvée, renvoi des données.")
+        raise HTTPException(status_code=404, detail="Capsule non trouvée ou accès refusé.")
+
+    # Pour les capsules de langue, on attache la roadmap si elle existe.
+    # Pour les autres, ce sera simplement None.
+    if capsule.domain == "languages":
+        capsule.language_roadmap = roadmap_crud.get_roadmap_by_user_and_capsule(
+            db, user_id=current_user.id, capsule_id=capsule.id
+        )
+
+    logger.info(f"--- [API] Capsule trouvée, renvoi des données. <💊Capsule(id={capsule.id})>")
     return capsule
 
 
@@ -344,7 +411,7 @@ def create_molecule_content(
     user_msg = f"Génère une leçon complète et structurée pour la leçon « {molecule.title} » dans le contexte du cours « {capsule.title} »."
     
     try:
-        response = openai_client.chat.completions.create(model="gpt-4-turbo", messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}], response_format={"type": "json_object"})
+        response = openai_client.chat.completions.create(model="gpt-5-mini-2025-08-07", messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}], response_format={"type": "json_object"})
         lesson_payload = json.loads(response.choices[0].message.content or "{}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur de génération OpenAI: {e}")

@@ -1,24 +1,40 @@
-# Gemini/backend/app/models/user/notification_model.py
+# Fichier: nanshev3/backend/app/models/user/notification_model.py
 
-from __future__ import annotations
-from sqlalchemy import Integer, String, Boolean, DateTime, func, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func, Enum
+from sqlalchemy.orm import relationship
 from app.db.base_class import Base
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from app.models.user.user_model import User
 
-if TYPE_CHECKING:
-    from .user_model import User
+class NotificationCategory(enum.Enum):
+    BADGE = "badge"
+    CAPSULE = "capsule"
+    MENTOR = "mentor"
+    GENERAL = "general"
+
+class NotificationStatus(enum.Enum):
+    UNREAD = "unread"
+    READ = "read"
 
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    message: Mapped[str] = mapped_column(String, nullable=False)
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    type: Mapped[Optional[str]] = mapped_column(String, index=True)
-    related_url: Mapped[Optional[str]] = mapped_column(String)
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    category = Column(Enum(NotificationCategory), nullable=False, default=NotificationCategory.GENERAL)
+    status = Column(Enum(NotificationStatus), nullable=False, default=NotificationStatus.UNREAD)
+    
+    title = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    
+    # Un lien cliquable pour rediriger l'utilisateur (ex: /badges/nouveau-badge)
+    link = Column(String, nullable=True) 
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped["User"] = relationship(back_populates="notifications")
+    user = relationship("User", back_populates="notifications")
+
+# N'oubliez pas d'ajouter cette relation dans votre modèle User (user_model.py)
+# à l'intérieur de la classe User:
+# notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

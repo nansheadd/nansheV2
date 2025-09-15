@@ -6,7 +6,15 @@ from fastapi import BackgroundTasks
 from openai import OpenAI
 from typing import List
 from app.models.capsule.atom_model import Atom
+from app.models.capsule.language_roadmap_model import LanguageRoadmap, LanguageRoadmapLevel, LevelSkillTarget, LevelFocus
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
+from app.services.services.capsules.others.default_builder import DefaultBuilder
+from app.models.capsule.capsule_model import Capsule, GenerationStatus
+from app.models.capsule.granule_model import Granule
+from app.models.capsule.molecule_model import Molecule
+from app.models.capsule.atom_model import Atom 
+from app.models.progress.user_course_progress_model import UserCourseProgress
+
 
 
 from app.core.config import settings
@@ -32,24 +40,16 @@ except Exception as e:
 # ==============================================================================
 # SECTION 1: FONCTION D'AIGUILLAGE (Dispatcher)
 # ==============================================================================
-def _get_builder_for_capsule(db: Session, capsule: Capsule) -> BaseCapsuleBuilder:
-    """
-    Fonction "Dispatcher" qui sélectionne le bon builder en fonction du domaine de la capsule.
-    """
+def _get_builder_for_capsule(db: Session, capsule: Capsule, user: User) -> BaseCapsuleBuilder: # Ajoutez user ici
     domain = capsule.domain
     logger.info(f"Sélection du builder pour le domaine : '{domain}'")
 
     if domain == "languages":
-        # Assurez-vous que le nom de la classe ici correspond bien au nom dans votre fichier
-        return ForeignBuilder(db=db, capsule=capsule) 
-    
-    # if domain == "philosophy":
-    #     return PhilosophyBuilder(db=db, capsule=capsule)
-    
-    # Par défaut, on pourrait retourner un DefaultBuilder qui génère du contenu simple
-    # return DefaultBuilder(db=db, capsule=capsule)
-    
-    # Pour l'instant, si aucun builder n'est trouvé, on lève une erreur.
+        return ForeignBuilder(db=db, capsule=capsule, user=user) # Passez user
+
+    elif domain != "languages":
+        return DefaultBuilder(db=db, capsule=capsule, user=user) # Passez user
+
     raise NotImplementedError(f"Aucun builder n'est implémenté pour le domaine '{domain}'")
 
 
@@ -80,19 +80,11 @@ class CapsuleService:
         self.user = user
 
     def create_capsule(self, background_tasks: BackgroundTasks, classification_result: dict) -> Capsule:
-        """
-        Orchestre la création d'une capsule de manière robuste :
-        1. Vérifie si une capsule similaire existe déjà.
-        2. Si non, crée l'entité de base 'Capsule' en BDD.
-        3. Démarre la tâche de fond pour la génération du plan.
-        """
         logger.info("\n--- [SERVICE] Début du processus de création de capsule ---")
-        
         main_skill = classification_result.get('main_skill')
         if not main_skill:
             raise ValueError("La classification n'a pas pu déterminer la compétence principale.")
 
-        # === ÉTAPE 1: Vérifier si une capsule identique existe déjà ===
         existing_capsule = self.db.query(Capsule).filter(
             Capsule.main_skill == main_skill,
             Capsule.creator_id == self.user.id
@@ -100,37 +92,28 @@ class CapsuleService:
         
         if existing_capsule:
             logger.info(f"--- [SERVICE] Une capsule pour '{main_skill}' existe déjà (ID: {existing_capsule.id}).")
-            # Si le plan n'a pas été généré pour une raison X, on peut relancer la tâche
-            if not existing_capsule.learning_plan_json and existing_capsule.generation_status != 'pending':
-                logger.info("--- [SERVICE] Le plan est manquant, relance de la tâche de génération. ---")
-                background_tasks.add_task(self.generate_and_save_plan, existing_capsule.id)
+            existing_roadmap = self.db.query(LanguageRoadmap).filter_by(capsule_id=existing_capsule.id, user_id=self.user.id).first()
+            if not existing_roadmap and existing_capsule.generation_status != 'pending':
+                logger.info("--- [SERVICE] La roadmap est manquante, relance de la tâche de génération. ---")
+                background_tasks.add_task(self.generate_and_save_plan, existing_capsule.id, self.user.id)
             return existing_capsule
 
-        # === ÉTAPE 2: Créer l'objet Capsule de base ===
-        # C'est la seule responsabilité de cette méthode : créer l'enregistrement initial.
-        logger.info(f"--- [SERVICE] Aucune capsule existante pour '{main_skill}'. Création de l'entrée en BDD. ---")
-        
+        logger.info(f"--- [SERVICE] Aucune capsule existante pour '{main_skill}'. Création...")
         new_capsule = Capsule(
-            title=main_skill.capitalize(), # On met une majuscule pour un titre propre
+            title=main_skill.capitalize(),
             main_skill=main_skill,
             domain=classification_result.get("domain", "others"),
             area=classification_result.get("area", "default"),
             creator_id=self.user.id
-            # le statut par défaut est 'pending'
         )
         self.db.add(new_capsule)
         self.db.commit()
         self.db.refresh(new_capsule)
         
-        logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée avec succès. ---")
-
-        # === ÉTAPE 3: Lancer la génération du plan en arrière-plan ===
-        # La tâche de fond est autonome, elle n'a besoin que de l'ID.
-        background_tasks.add_task(self.generate_and_save_plan, new_capsule.id)
-        
-        logger.info("--- [SERVICE] Processus de création terminé, la génération du plan s'exécute en fond. ---")
+        logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée. Lancement de la génération du plan en fond. ---")
+        background_tasks.add_task(self.generate_and_save_plan, new_capsule.id, self.user.id)
         return new_capsule
-
+    
 
     def prepare_session_for_level(self, capsule: Capsule, granule_order: int, molecule_order: int) -> List[Atom]:
         """
@@ -149,62 +132,209 @@ class CapsuleService:
         return atoms
     
 
-    def generate_and_save_plan(self, capsule_id: int):
+    def create_capsule_from_classification(self, classification_data: dict) -> Capsule:
         """
-        Tâche de fond robuste pour générer, sauvegarder et vectoriser un plan d'apprentissage.
-        Cette méthode est autonome et gère sa propre session de base de données.
+        Version corrigée qui utilise la méthode generate_learning_plan du builder
+        et crée la hiérarchie de la capsule.
         """
-        logger.info(f"\n--- [PLAN_GENERATOR] Tâche démarrée pour la capsule ID: {capsule_id} ---")
-        db: Session = SessionLocal()
+        topic = classification_data.get("main_skill", "Sujet inconnu")
+        logger.info(f"\n--- [SERVICE] Création de capsule à partir de la classification pour: '{topic}' ---")
         
-        # On déclare capsule ici pour qu'elle soit accessible dans le bloc 'except'
-        capsule = None 
+        new_capsule = Capsule(
+            title=topic.capitalize(),
+            main_skill=topic,
+            domain=classification_data.get("domain", "others"),
+            area=classification_data.get("area", "generic"),
+            creator_id=self.user.id,
+            generation_status=GenerationStatus.PENDING
+        )
+        self.db.add(new_capsule)
+        self.db.commit()
+        self.db.refresh(new_capsule)
+        logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée. ---")
+
+        enrollment = UserCourseProgress(user_id=self.user.id, capsule_id=new_capsule.id)
+        self.db.add(enrollment)
+        self.db.commit()
+        logger.info(f"--- [SERVICE] Utilisateur {self.user.id} inscrit à la capsule {new_capsule.id}. ---")
+
+        builder = _get_builder_for_capsule(self.db, new_capsule, self.user)
+        
+        # --- CORRECTION 1 : Appeler la bonne méthode ---
+        # On appelle la méthode de la classe de base qui génère le plan JSON.
+        logger.info(f"--- [SERVICE] Lancement de generate_learning_plan() pour la capsule {new_capsule.id}. ---")
+        plan_json = builder.generate_learning_plan(db=self.db, capsule=new_capsule)
+
+        if not plan_json:
+            new_capsule.generation_status = GenerationStatus.FAILED
+            self.db.commit()
+            logger.error(f"--- [SERVICE] Échec de la génération du plan pour la capsule {new_capsule.id}.")
+            # Vous pourriez vouloir retourner une erreur ici, mais pour l'instant on continue.
+            return new_capsule
+
+        # --- CORRECTION 2 : Sauvegarder le plan et créer la structure ---
+        # On sauvegarde le plan JSON dans l'objet capsule.
+        new_capsule.learning_plan_json = plan_json
+        
+        # On parcourt le plan pour créer les "coquilles vides" des Granules et Molécules.
+        for g_order, level_data in enumerate(plan_json.get("levels", [])):
+            new_granule = Granule(
+                title=level_data.get("level_title", f"Niveau {g_order + 1}"),
+                order=g_order + 1,
+                capsule_id=new_capsule.id
+            )
+            self.db.add(new_granule)
+            self.db.flush() # Nécessaire pour obtenir l'ID du granule
+
+            for m_order, chapter_data in enumerate(level_data.get("chapters", [])):
+                new_molecule = Molecule(
+                    title=chapter_data.get("chapter_title", f"Leçon {m_order + 1}"),
+                    order=m_order + 1,
+                    granule_id=new_granule.id
+                )
+                self.db.add(new_molecule)
+                
+        new_capsule.generation_status = GenerationStatus.COMPLETED
+        self.db.commit()
+        self.db.refresh(new_capsule)
+
+        # --- CORRECTION 3 : La logique de génération du contenu initial reste la même ---
+        logger.info(f"--- [SERVICE] Génération du contenu initial pour la première molécule. ---")
+        first_molecule = self.db.query(Molecule).join(Granule).filter(
+            Granule.capsule_id == new_capsule.id
+        ).order_by(Granule.order, Molecule.order).first()
+        
+        if first_molecule:
+            builder.build_molecule_content(first_molecule)
+            self.db.commit()
+        else:
+            logger.warning(f"--- [SERVICE] Le plan généré pour la capsule {new_capsule.id} est vide.")
+
+        return new_capsule
+    
+
+    def generate_next_molecule_content(self, completed_molecule_id: int) -> List[Atom]:
+        """
+        Génère le contenu pour la molécule suivante et le retourne (logique JIT),
+        SANS utiliser de module CRUD.
+        """
+        logger.info(f"--- [SERVICE] Requête JIT pour la molécule suivant {completed_molecule_id}. ---")
+        
+        completed_molecule = self.db.query(Molecule).get(completed_molecule_id)
+        if not completed_molecule:
+            return []
+
+        # === CORRECTION : Requête directe pour trouver la molécule suivante ===
+        next_molecule = self.db.query(Molecule).filter(
+            Molecule.granule_id == completed_molecule.granule_id,
+            Molecule.order == completed_molecule.order + 1
+        ).first()
+
+        if not next_molecule:
+            logger.info("--- [SERVICE] Fin du granule ou de la capsule, pas de molécule suivante. ---")
+            return []
+
+        if next_molecule.atoms:
+            logger.info(f"--- [SERVICE] Les atomes pour la molécule {next_molecule.id} existent déjà. On les retourne. ---")
+            return next_molecule.atoms
+
+        builder = _get_builder_for_capsule(self.db, next_molecule.granule.capsule, self.user)
+        
+        logger.info(f"--- [SERVICE] Génération des atomes pour la molécule {next_molecule.id}... ---")
+        atoms = builder.build_molecule_content(next_molecule)
+        self.db.commit() # On sauvegarde les atomes créés par le builder
+        
+        return atoms
+    
+
+    def get_or_generate_atoms_for_molecule(self, molecule_id: int) -> List[Atom]:
+        """
+        Récupère les atomes d'une molécule. S'ils n'existent pas, les génère.
+        """
+        logger.info(f"--- [SERVICE] Demande d'atomes pour la molécule ID: {molecule_id} ---")
+        
+        molecule = self.db.query(Molecule).get(molecule_id)
+        if not molecule:
+            logger.error(f"--- [SERVICE] Molécule ID {molecule_id} non trouvée.")
+            return [] # Ou lever une HTTPException
+
+        # 1. Vérifier si les atomes existent déjà (cache BDD)
+        if molecule.atoms:
+            logger.info(f"--- [SERVICE] Atomes trouvés en BDD pour la molécule '{molecule.title}'. Retour direct.")
+            return molecule.atoms
+
+        # 2. Si non, on les génère
+        logger.info(f"--- [SERVICE] Aucun atome trouvé. Lancement de la génération pour '{molecule.title}'.")
+        capsule = molecule.granule.capsule
+        
+        # On utilise votre dispatcher existant pour obtenir le bon builder
+        builder = _get_builder_for_capsule(self.db, capsule, self.user)
+        
+        # On appelle la méthode du builder qui contient la logique de génération
+        atoms = builder.build_molecule_content(molecule)
+        
+        # La méthode du builder doit faire le commit, mais on s'assure de rafraîchir
+        self.db.refresh(molecule)
+        
+        return molecule.atoms
+    
+    def generate_and_save_plan(self, capsule_id: int, user_id: int):
+        """
+        Tâche de fond qui crée une roadmap personnelle pour un utilisateur en
+        se basant sur la roadmap "modèle" de l'utilisateur système.
+        """
+        logger.info(f"\n--- [PLAN_GENERATOR] Tâche démarrée pour capsule ID: {capsule_id} et user ID: {user_id} ---")
+        db: Session = SessionLocal()
         try:
-            # 1. Récupération et validation de la capsule
             capsule = db.query(Capsule).get(capsule_id)
-            if not capsule:
-                logger.warning(f"--- [PLAN_GENERATOR] Capsule ID {capsule_id} non trouvée. Arrêt.")
-                return
-            if capsule.learning_plan_json:
-                logger.info(f"--- [PLAN_GENERATOR] La capsule '{capsule.title}' a déjà un plan. Arrêt. ---")
+            user = db.query(User).get(user_id)
+            if not capsule or not user:
+                logger.error("Capsule ou Utilisateur non trouvé.")
                 return
 
-            # 2. Sélection du Builder approprié
-            # Cette étape est cruciale car elle charge la logique spécifique au domaine
-            builder = get_builder_for_capsule(capsule.domain, capsule.area, db, capsule)
+            # On vérifie si une roadmap existe déjà pour CET utilisateur
+            if db.query(LanguageRoadmap).filter_by(capsule_id=capsule.id, user_id=user.id).first():
+                logger.info("Une roadmap existe déjà pour cet utilisateur. Arrêt.")
+                return
 
-            # 3. Tentative de récupération du plan depuis le cache (VectorStore)
-            logger.info(f"--- [PLAN_GENERATOR] Recherche du plan dans le cache pour '{capsule.main_skill}'...")
-            generated_plan = builder._find_plan_in_vector_store(db, capsule.main_skill)
+            # --- LOGIQUE DE COPIE CORRIGÉE ---
+            # 1. Trouver l'utilisateur système et sa roadmap modèle
+            system_user = db.query(User).filter(User.email == "system@nanshe.ai").first()
+            if not system_user:
+                raise ValueError("Utilisateur système 'system@nanshe.ai' introuvable.")
+
+            template_roadmap = db.query(LanguageRoadmap).join(Capsule).filter(
+                Capsule.main_skill == capsule.main_skill,
+                LanguageRoadmap.user_id == system_user.id
+            ).first()
+
+            if not template_roadmap or not template_roadmap.roadmap_data:
+                raise ValueError(f"Aucune roadmap modèle trouvée pour '{capsule.main_skill}'.")
+
+            # 2. Créer la nouvelle roadmap pour l'utilisateur en copiant les données du modèle
+            logger.info(f"Copie de la roadmap modèle pour l'utilisateur {user.id}...")
+            new_roadmap = LanguageRoadmap(
+                user_id=user.id,
+                capsule_id=capsule.id,
+                roadmap_data=template_roadmap.roadmap_data # On copie le plan JSON
+            )
+            db.add(new_roadmap)
+            db.flush() # Pour obtenir l'ID de la nouvelle roadmap
+
+            # 3. (Optionnel) Si vous voulez dénormaliser les niveaux, faites-le ici
+            # C'est souvent plus simple de juste utiliser le JSON `roadmap_data` dans le frontend
             
-            # 4. Si non trouvé en cache, génération via le Builder spécialisé
-            if not generated_plan:
-                logger.info(f"--- [PLAN_GENERATOR] Plan non trouvé en cache. Lancement de la génération via {type(builder).__name__}...")
-                generated_plan = builder.generate_learning_plan(db, capsule)
-
-            # 5. Validation et sauvegarde du plan
-            if not generated_plan:
-                # Si la génération échoue, on lève une erreur pour passer au bloc 'except'
-                raise ValueError("La génération du plan par le builder a échoué et n'a retourné aucun contenu.")
-
-            capsule.learning_plan_json = generated_plan
             capsule.generation_status = GenerationStatus.COMPLETED
             db.commit()
-            
-            logger.info(f"-> ✅ SUCCÈS: Le plan pour '{capsule.title}' a été sauvegardé dans la capsule.")
-
-            # 6. Vectorisation de la compétence pour le RAG futur
-            # On s'assure que cette compétence est dans notre "mémoire" pour les prochaines générations
-            self._vectorize_skill(db, capsule)
+            logger.info(f"-> ✅ SUCCÈS: Roadmap pour '{capsule.title}' créée pour l'utilisateur {user.id}.")
         
         except Exception as e:
             logger.error(f"-> ❌ ERREUR CRITIQUE lors de la génération du plan pour la capsule ID {capsule_id}: {e}", exc_info=True)
-            if capsule: # On vérifie que la capsule a bien été chargée
-                db.rollback() # Annuler les changements potentiels
+            if db.query(Capsule).get(capsule_id):
+                db.rollback()
                 capsule.generation_status = GenerationStatus.FAILED
                 db.commit()
         finally:
-            logger.info(f"--- [PLAN_GENERATOR] Tâche terminée pour la capsule ID {capsule_id}. Fermeture de la session DB. ---")
             db.close()
 
 
@@ -255,5 +385,6 @@ def get_capsule_by_path(db: Session, user: User, domain: str, area: str, capsule
         logger.warning(f"--- [GET_BY_PATH] Accès refusé pour l'utilisateur {user.id} à la capsule {capsule_id}.")
         return None
     
+    print("DIGIMON :: ", capsule)
     logger.info(f"--- [GET_BY_PATH] Capsule '{capsule.title}' trouvée et autorisée.")
     return capsule

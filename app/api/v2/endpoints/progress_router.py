@@ -4,10 +4,12 @@ from sqlalchemy.orm import Session
 from app.schemas.progress import progress_schema
 from app.crud.course import chapter_crud
 from app.crud import progress_crud
+from app.api.v2 import dependencies
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.progress import user_answer_log_model
 from app.models.course import knowledge_component_model, knowledge_graph_model
-from app.schemas.progress.progress_schema import AnswerCreate, AnswerResult
+from app.schemas.progress.progress_schema import AnswerCreate, AnswerResult, AnswerLogCreate
+from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.user.user_model import User
 from pydantic import BaseModel
 from datetime import datetime
@@ -78,6 +80,23 @@ def complete_atom(
     updated_progress = progress_service.record_atom_completion(atom_id)
     return updated_progress
 
+
+@router.post("/log-answer", status_code=201)
+def log_user_answer(
+    answer_data: AnswerLogCreate,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
+):
+    """Enregistre la réponse d'un utilisateur à un exercice."""
+    answer_log = UserAnswerLog(
+        user_id=current_user.id,
+        atom_id=answer_data.atom_id,
+        is_correct=answer_data.is_correct,
+        user_answer_json=answer_data.user_answer
+    )
+    db.add(answer_log)
+    db.commit()
+    return {"message": "Answer logged successfully"}
 
 def _is_qcm_correct(correct_option: Any, user_answer: Any) -> bool:
     """
