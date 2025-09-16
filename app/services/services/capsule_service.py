@@ -29,6 +29,7 @@ from app.services.rag_utils import get_embedding
 from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
 from app.services.services.capsules.others.default_builder import DefaultBuilder
+from app.services.services.capsules.programming import PythonProgrammingBuilder
 from app.core.config import settings
 from app.db.session import SessionLocal
 
@@ -52,23 +53,22 @@ def _get_builder_for_capsule(db: Session, capsule: Capsule, user: User) -> BaseC
     if domain == "languages":
         return ForeignBuilder(db=db, capsule=capsule, user=user) # Passez user
 
-    elif domain != "languages":
-        return DefaultBuilder(db=db, capsule=capsule, user=user) # Passez user
+    if domain == "programming":
+        area = (capsule.area or "").lower()
+        if "python" in area or not area:
+            return PythonProgrammingBuilder(db=db, capsule=capsule, user=user)
 
-    raise NotImplementedError(f"Aucun builder n'est implémenté pour le domaine '{domain}'")
+    return DefaultBuilder(db=db, capsule=capsule, user=user)
 
 
 def get_builder_for_capsule(domain: str, area: str, db: Session, capsule: Capsule) -> BaseCapsuleBuilder:
-    """
-    Fonction "Dispatcher" qui sélectionne et INSTANCIE le bon builder.
-    """
-    logger.info(f"Sélection du builder pour le domaine : '{domain}'")
-
-    if domain == "languages":
-        # --- MODIFICATION 2 : On passe les arguments à l'instanciation ---
-        return ForeignBuilder(db=db, capsule=capsule)
-    
-    raise NotImplementedError(f"Aucun builder n'est implémenté pour le domaine '{domain}'")
+    """Compatibilité rétro : construit le builder en résolvant l'utilisateur si besoin."""
+    user = getattr(capsule, "creator", None)
+    if user is None and capsule.creator_id:
+        user = db.get(User, capsule.creator_id)
+    if user is None:
+        raise ValueError("Impossible de déterminer le créateur de la capsule pour sélectionner le builder.")
+    return _get_builder_for_capsule(db=db, capsule=capsule, user=user)
 
 
 # ==============================================================================
@@ -85,6 +85,7 @@ class CapsuleService:
         self.user = user
         self._progress_cache: Dict[int, UserAtomProgress] | None = None
         self._progress_cache_capsule_id: Optional[int] = None
+        self._is_superuser = bool(getattr(user, "is_superuser", False))
 
     # ------------------------------------------------------------------
     # Helpers de progression
@@ -160,6 +161,8 @@ class CapsuleService:
         return True
 
     def _is_molecule_unlocked(self, molecule: Molecule) -> bool:
+        if self._is_superuser:
+            return True
         granule = molecule.granule
         if granule.order > 1:
             previous_granule = (
@@ -180,6 +183,8 @@ class CapsuleService:
         return True
 
     def _ensure_molecule_unlocked(self, molecule: Molecule):
+        if self._is_superuser:
+            return
         if not self._is_molecule_unlocked(molecule):
             raise HTTPException(status_code=403, detail="molecule_locked")
 
@@ -194,7 +199,10 @@ class CapsuleService:
             progress = progress_map.get(atom.id)
             progress_status = progress.status if progress else 'not_started'
             setattr(atom, 'progress_status', progress_status)
-            setattr(atom, 'is_locked', not previous_completed)
+            if self._is_superuser:
+                setattr(atom, 'is_locked', False)
+            else:
+                setattr(atom, 'is_locked', not previous_completed)
             if progress and progress.status == 'completed':
                 previous_completed = previous_completed and True
             else:
@@ -207,7 +215,7 @@ class CapsuleService:
         granules_sorted = sorted(capsule.granules, key=lambda g: g.order)
         for granule in granules_sorted:
             prev_granule_completed = completed_granules.get(granule.order - 1, granule.order == 1)
-            granule_locked = granule.order > 1 and not prev_granule_completed
+            granule_locked = (granule.order > 1 and not prev_granule_completed) and not self._is_superuser
             setattr(granule, 'is_locked', granule_locked)
             molecules_sorted = sorted(granule.molecules, key=lambda m: m.order)
             prev_molecule_completed = prev_granule_completed
@@ -215,7 +223,7 @@ class CapsuleService:
             for molecule in molecules_sorted:
                 completed = self._is_molecule_completed(molecule, progress_map)
                 status = self._compute_molecule_progress_status(molecule, progress_map)
-                is_locked = granule_locked or (molecule.order > 1 and not prev_molecule_completed)
+                is_locked = (granule_locked or (molecule.order > 1 and not prev_molecule_completed)) and not self._is_superuser
                 setattr(molecule, 'is_locked', is_locked)
                 setattr(molecule, 'progress_status', status)
                 molecule_statuses.append(status)
@@ -318,7 +326,7 @@ class CapsuleService:
         Prépare et génère le contenu d'une molécule (leçon) spécifique si nécessaire.
         """
         # On utilise le dispatcher pour obtenir le bon builder
-        builder = get_builder_for_capsule(capsule.domain, capsule.area, self.db, capsule)
+        builder = _get_builder_for_capsule(self.db, capsule, self.user)
         
         # 1. S'assurer que la hiérarchie DB (Granule -> Molecule) existe
         molecule = builder.get_or_create_hierarchy(granule_order, molecule_order)

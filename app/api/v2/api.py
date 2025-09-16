@@ -8,6 +8,7 @@ from .endpoints import (
     nlp_router,
     capsule_router,
     notification_router,
+    programming_router,
 )
 
 api_router = APIRouter()
@@ -19,4 +20,4 @@ api_router.include_router(feedback_router.router, prefix="/feedback", tags=["Fee
 api_router.include_router(nlp_router.router, prefix="/nlp", tags=["Nlp"])
 api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Capsule"])
 api_router.include_router(notification_router.router, prefix="/notifications", tags=["Notifications"])
-
+api_router.include_router(programming_router.router, prefix="/programming", tags=["Programming"])

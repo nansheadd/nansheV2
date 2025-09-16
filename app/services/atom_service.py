@@ -25,6 +25,12 @@ class AtomService:
             return self._create_lesson_content(molecule)
         if atom_type == AtomContentType.QUIZ:
             return self._create_quiz_content(molecule, context_atoms, difficulty)
+        if atom_type == AtomContentType.CODE_EXAMPLE:
+            return self._create_code_example_content(molecule, context_atoms)
+        if atom_type == AtomContentType.CODE_CHALLENGE:
+            return self._create_code_challenge_content(molecule, context_atoms)
+        if atom_type == AtomContentType.LIVE_CODE_EXECUTOR:
+            return self._create_live_code_executor_content(molecule, context_atoms)
         # Ajoutez d'autres types d'atomes ici à l'avenir
         # if atom_type == AtomContentType.CODE_CHALLENGE:
         #     return self._create_code_challenge_content(molecule)
@@ -59,6 +65,15 @@ class AtomService:
         }
         plan_context = json.dumps(plan_dict, indent=2, ensure_ascii=False)
         # --- FIN DE LA CORRECTION ---
+
+        if self.capsule.domain == 'programming':
+            language = self._language_from_capsule()
+            return ai_service.generate_programming_lesson(
+                course_plan_context=plan_context,
+                lesson_title=molecule.title,
+                language=language,
+                model_choice="gpt-5-mini-2025-08-07",
+            )
 
         app_rules_context = """
         - Structure: Le cours est divisé en chapitres (granules) et leçons (molécules).
@@ -104,3 +119,77 @@ class AtomService:
             return exercise_content
             
         return None
+
+    # =========================
+    # PROGRAMMING CONTENT HELPERS
+    # =========================
+
+    def _extract_lesson_text(self, context_atoms: list[Atom]) -> str:
+        for atom in context_atoms:
+            if atom.content_type == AtomContentType.LESSON:
+                return atom.content.get("text", "")
+        return ""
+
+    def _language_from_capsule(self) -> str:
+        area = (self.capsule.area or "").lower()
+        if "python" in area:
+            return "python"
+        if "javascript" in area:
+            return "javascript"
+        if "sql" in area:
+            return "sql"
+        return "python"
+
+    def _create_code_example_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        language = self._language_from_capsule()
+        content = ai_service.generate_code_example(
+            lesson_text=lesson_text,
+            lesson_title=molecule.title,
+            language=language,
+            model_choice="gpt-5-mini-2025-08-07",
+        )
+        return content or {
+            "description": "Exemple de code non disponible.",
+            "language": language,
+            "code": "",
+            "explanation": "",
+        }
+
+    def _create_code_challenge_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        language = self._language_from_capsule()
+        content = ai_service.generate_code_challenge(
+            lesson_text=lesson_text,
+            lesson_title=molecule.title,
+            language=language,
+            model_choice="gpt-5-mini-2025-08-07",
+        )
+        return content or {
+            "title": "Challenge de programmation",
+            "language": language,
+            "description": "",
+            "starter_code": "",
+            "sample_tests": [],
+            "hints": [],
+        }
+
+    def _create_live_code_executor_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
+        challenge_content = self._create_code_challenge_content(molecule, context_atoms) or {}
+        lesson_text = self._extract_lesson_text(context_atoms)
+        language = self._language_from_capsule()
+        content = ai_service.generate_live_code_session(
+            lesson_text=lesson_text,
+            lesson_title=molecule.title,
+            language=language,
+            challenge=challenge_content,
+            model_choice="gpt-5-mini-2025-08-07",
+        )
+        if content:
+            return content
+        return {
+            "language": language,
+            "instructions": "Utilise l'éditeur pour expérimenter avec le concept étudié.",
+            "starter_code": challenge_content.get("starter_code", ""),
+            "hints": challenge_content.get("hints", []),
+        }

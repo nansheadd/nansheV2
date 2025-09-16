@@ -13,6 +13,8 @@ class CoachRequest(BaseModel):
     message: str
     context: Dict[str, Any]
     history: List[Dict[str, str]]
+    quick_action: str | None = None
+    selection: Dict[str, Any] | None = None
 
 @router.post("/coach")
 def handle_coach_request(
@@ -25,6 +27,8 @@ def handle_coach_request(
         user=current_user, 
         message=request.message, 
         context=request.context,
-        history=request.history
+        history=request.history,
+        quick_action=request.quick_action,
+        selection=request.selection,
     )
     return {"response": response}

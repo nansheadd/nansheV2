@@ -62,7 +62,15 @@ def _format_recent_errors(errors: list[UserAnswerLog]) -> str:
     return "\n".join(rows)
 
 
-def ask_coach(db: Session, user: User, message: str, context: dict, history: list) -> str:
+def ask_coach(
+    db: Session,
+    user: User,
+    message: str,
+    context: dict,
+    history: list,
+    quick_action: str | None = None,
+    selection: dict | None = None,
+) -> str:
     """Produit une réponse contextualisée par capsule pour le coach IA."""
 
     capsule_id = _extract_capsule_id(context or {})
@@ -140,10 +148,21 @@ def ask_coach(db: Session, user: User, message: str, context: dict, history: lis
         for msg in (history or [])
     )
 
+    selection_text = ''
+    if selection and selection.get('text'):
+        text_snippet = selection['text'][:2000]
+        selection_text = f"\nContenu sélectionné par l'utilisateur :\n{text_snippet}"
+
+    quick_action_text = ''
+    if quick_action:
+        quick_action_text = f"\nAction rapide détectée : {quick_action}."
+
     system_prompt = f"""
 Tu es un coach IA bienveillant aidant un apprenant sur la capsule suivante :
 {capsule_details}
 {focus_description}
+{quick_action_text}
+{selection_text}
 
 Contexte sur l'historique de discussion :
 {history_text or 'Aucun historique.'}

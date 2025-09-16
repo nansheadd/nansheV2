@@ -187,6 +187,50 @@ def generate_learning_plan(title: str, course_type: str, model_choice: str) -> d
         logger.error(f"Erreur de plan de cours pour '{title}': {e}")
         return {}
 
+
+def generate_programming_learning_plan(topic: str, language: str, rag_examples: list[dict], model_choice: str) -> dict | None:
+    logger.info("IA Service: génération d'un plan de programmation pour %s", topic)
+    examples_text = "\n\n".join(
+        [f"Plan exemple pour '{ex['main_skill']}':\n{json.dumps(ex['plan'], ensure_ascii=False, indent=2)}" for ex in rag_examples]
+    ) if rag_examples else ""
+
+    system_prompt = f"""
+Tu es un expert en pédagogie de la programmation. Construis un plan complet pour maîtriser "{topic}".
+
+[CONTRAINTES]
+- Retourne un objet JSON unique avec les clés "overview" et "levels".
+- "overview" doit préciser:
+  {{
+    "target_language": "{language}",
+    "audience": "profil apprenant",
+    "prerequisites": ["liste de prérequis"]
+  }}
+- Chaque élément de "levels" doit contenir:
+  {{
+    "level_title": "Module en français",
+    "focus": "objectif principal",
+    "project": "mini-projet concret",
+    "chapters": [
+      {{"chapter_title": "Concepts & théorie"}},
+      {{"chapter_title": "Guided practice et exemples"}},
+      {{"chapter_title": "Challenge applicatif"}}
+    ]
+  }}
+- Prévois entre 8 et 12 levels en montée progressive (bases syntaxiques, structures de contrôle, fonctions, modules, OOP, manipulation de données, automatisation, projet final, etc.).
+- Mets l'accent sur des projets concrets (CLI, web, data, tests automatisés...).
+- Style clair, actionnable, pas de listes vides.
+"""
+
+    if examples_text:
+        system_prompt += f"\n\nPlans d'inspiration (ne rien copier mot à mot) :\n{examples_text}"
+
+    user_prompt = "Produis le JSON demandé pour ce parcours de programmation."
+    try:
+        return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+    except Exception as exc:
+        logger.error("Erreur de génération de plan de programmation: %s", exc, exc_info=True)
+        return None
+
 def generate_adaptive_learning_plan(title: str, personalization_details: Dict[str, Any], model_choice: str) -> dict:
     user_context = json.dumps(personalization_details, ensure_ascii=False)
     system_prompt = prompt_manager.get_prompt("course_planning.adaptive_plan", user_context=user_context, ensure_json=True)
@@ -440,3 +484,152 @@ CONTENU DE LA LEÇON À ÉVALUER:
     except Exception as e:
         logger.error(f"Erreur de génération d'exercices pour '{lesson_title}': {e}")
         return {} # On renvoie un objet vide en cas d'erreur
+
+
+def generate_programming_lesson(
+    course_plan_context: str,
+    lesson_title: str,
+    language: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info("IA Service: génération de leçon orientée programmation pour %s", lesson_title)
+    system_prompt = f"""
+Tu es un mentor de programmation. Crée une leçon complète en Markdown pour la leçon "{lesson_title}".
+
+---
+CONTEXTE DU COURS:
+{course_plan_context}
+---
+
+[INSTRUCTIONS]
+- Langage ciblé : {language}.
+- La réponse DOIT être un objet JSON unique {{"text": "contenu markdown"}}.
+- Structure recommandée : introduction, objectifs, explications progressives, blocs de code commentés, bonnes pratiques, questions de réflexion.
+- Inclue au moins un bloc de code clé (en {language}) et une courte section "À retenir".
+- Évite les projets complets ici (ce sera couvert dans les autres atomes).
+"""
+    user_prompt = f"Rédige la leçon détaillée pour '{lesson_title}'."
+    try:
+        return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+    except Exception as exc:
+        logger.error("Erreur de génération de leçon programmation: %s", exc, exc_info=True)
+        return {"text": "Erreur lors de la génération de cette leçon."}
+
+
+def generate_code_example(
+    lesson_text: str,
+    lesson_title: str,
+    language: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info(f"IA Service: génération d'exemple de code pour '{lesson_title}'")
+    system_prompt = f"""
+Tu es un mentor de programmation. À partir de la leçon suivante, crée un exemple de code concis, exploitable et bien commenté.
+
+---
+LEÇON:
+{lesson_text}
+---
+
+[INSTRUCTIONS]
+- Utilise le langage: {language}.
+- Retourne un objet JSON unique avec la structure:
+  {{
+    "description": "expliquer ce que montre l'exemple",
+    "language": "{language}",
+    "code": "code exécutable et commenté",
+    "explanation": "analyse du code, bonnes pratiques"
+  }}
+- Reste fidèle au contenu de la leçon.
+"""
+    user_prompt = f"Crée un exemple de code pédagogique pour la leçon '{lesson_title}'."
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error(f"Erreur de génération d'exemple de code pour '{lesson_title}': {exc}")
+        return None
+
+
+def generate_code_challenge(
+    lesson_text: str,
+    lesson_title: str,
+    language: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info(f"IA Service: génération de challenge pour '{lesson_title}'")
+    system_prompt = f"""
+Tu es un concepteur d'exercices de programmation. À partir de la leçon ci-dessous, propose un challenge pratique.
+
+---
+LEÇON:
+{lesson_text}
+---
+
+[INSTRUCTIONS]
+- Langage utilisé : {language}.
+- Retourne un objet JSON unique de la forme :
+  {{
+    "title": "titre court",
+    "description": "consignes détaillées",
+    "language": "{language}",
+    "starter_code": "code de départ minimal",
+    "sample_tests": [
+      {{"input": "", "output": ""}}
+    ],
+    "hints": ["indice optionnel"]
+  }}
+- Le challenge doit être atteignable en moins d'une heure et aligné avec la leçon.
+"""
+    user_prompt = f"Génère un challenge de code pour la leçon '{lesson_title}'."
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error(f"Erreur de génération de challenge pour '{lesson_title}': {exc}")
+        return None
+
+
+def generate_live_code_session(
+    lesson_text: str,
+    lesson_title: str,
+    language: str,
+    challenge: Dict[str, Any],
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info(f"IA Service: génération de session interactive pour '{lesson_title}'")
+    challenge_json = json.dumps(challenge, ensure_ascii=False) if challenge else "{}"
+    system_prompt = f"""
+Tu aides l'utilisateur à pratiquer dans un éditeur de code intégré.
+
+Leçon :
+{lesson_text}
+
+Challenge de référence :
+{challenge_json}
+
+Retourne un objet JSON unique :
+{{
+  "language": "{language}",
+  "instructions": "guides pas à pas",
+  "starter_code": "code initial",
+  "hints": ["indice"],
+  "suggested_experiments": ["idées pour aller plus loin"]
+}}
+"""
+    user_prompt = f"Prépare une session d'entraînement interactive pour la leçon '{lesson_title}'."
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error(f"Erreur de génération de session interactive pour '{lesson_title}': {exc}")
+        return None
