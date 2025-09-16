@@ -1,8 +1,9 @@
-from sqlalchemy import Integer, String, ForeignKey
+from sqlalchemy import Integer, String, ForeignKey, Enum as EnumSQL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List, TYPE_CHECKING
 
 from app.db.base_class import Base
+from .capsule_model import GenerationStatus
 
 if TYPE_CHECKING:
     from .granule_model import Granule
@@ -16,6 +17,11 @@ class Molecule(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False)
     granule_id: Mapped[int] = mapped_column(Integer, ForeignKey("granules.id"))
+    generation_status: Mapped[GenerationStatus] = mapped_column(
+        EnumSQL(GenerationStatus, name="molecule_generation_status_enum"),
+        default=GenerationStatus.COMPLETED,
+        nullable=False
+    )
 
     # --- Relations ---
     granule: Mapped["Granule"] = relationship(back_populates="molecules")

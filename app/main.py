@@ -17,10 +17,16 @@ from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
 from app.admin import (
     AITokenLogAdmin,
-    CourseAdmin,
+    AtomAdmin,
+    CapsuleAdmin,
     FeedbackAdmin,
+    GranuleAdmin,
+    MoleculeAdmin,
+    UserActivityLogAdmin,
     UserAdmin,
-    register_all_models,
+    UserAnswerLogAdmin,
+    UserCapsuleEnrollmentAdmin,
+    UserCapsuleProgressAdmin,
 )
 
 # --- NOUVEL IMPORT ---
@@ -71,10 +77,16 @@ class AdminAuth(AuthenticationBackend):
 authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
 admin = Admin(app, async_engine, authentication_backend=authentication_backend, base_url="/admin")
 admin.add_view(UserAdmin)
-admin.add_view(CourseAdmin)
+admin.add_view(CapsuleAdmin)
+admin.add_view(GranuleAdmin)
+admin.add_view(MoleculeAdmin)
+admin.add_view(AtomAdmin)
+admin.add_view(UserCapsuleEnrollmentAdmin)
+admin.add_view(UserCapsuleProgressAdmin)
+admin.add_view(UserActivityLogAdmin)
+admin.add_view(UserAnswerLogAdmin)
 admin.add_view(AITokenLogAdmin)
 admin.add_view(FeedbackAdmin)
-register_all_models(admin)
 app.include_router(api_router, prefix="/api/v2")
 
 

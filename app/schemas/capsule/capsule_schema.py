@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
+from app.models.capsule.capsule_model import GenerationStatus
+
 # ==============================================================================
 # SECTION 1: SCHÉMAS DE CONTENU (ATOM, MOLECULE, GRANULE)
 # ==============================================================================
@@ -13,6 +15,8 @@ class AtomRead(BaseModel):
     content_type: str
     content: Dict[str, Any]
     difficulty: Optional[str] = None
+    progress_status: str = "not_started"
+    is_locked: bool = False
 
     class Config:
         from_attributes = True
@@ -23,6 +27,9 @@ class MoleculeRead(BaseModel):
     title: str
     order: int
     atoms: List[AtomRead] = []
+    generation_status: GenerationStatus
+    progress_status: str = "not_started"
+    is_locked: bool = False
 
     class Config:
         from_attributes = True
@@ -33,6 +40,8 @@ class GranuleRead(BaseModel):
     title: str
     order: int
     molecules: List[MoleculeRead] = []
+    progress_status: str = "not_started"
+    is_locked: bool = False
 
     class Config:
         from_attributes = True
@@ -89,7 +98,9 @@ class CapsuleProgressRead(BaseModel):
     id: int
     user_id: int
     capsule_id: int
+    skill_id: int
     xp: int = Field(..., description="Points d'expérience totaux pour cette capsule.")
+    strength: float
 
     class Config:
         from_attributes = True

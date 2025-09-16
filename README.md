@@ -14,10 +14,12 @@ Voici la liste des endpoints actuellement disponibles.
 
 ---
 
-### Courses (`/api/v2/courses`)
+### Capsules (`/api/v2/capsules`)
 
-| Méthode | Route                       | Description                               | Données en entrée (Body)         | Réponse en cas de succès (2xx)   |
-| :------ | :-------------------------- | :---------------------------------------- | :------------------------------- | :------------------------------- |
-| `POST`  | `/`                         | Crée un nouveau cours (plan généré par IA). | `course_schema.CourseCreate`     | `course_schema.Course`           |
-| `GET`   | `/`                         | Récupère la liste de tous les cours.      | _Aucune_                         | `List[course_schema.Course]`     |
-| `GET`   | `/{course_id}`              | Récupère les détails d'un cours spécifique. | _Aucune_                         | `course_schema.Course`           |
+| Méthode | Route                                                | Description                                                         | Données en entrée (Body)                     | Réponse en cas de succès (2xx)   |
+| :------ | :--------------------------------------------------- | :------------------------------------------------------------------ | :------------------------------------------- | :------------------------------- |
+| `GET`   | `/me`                                                | Liste les capsules auxquelles l'utilisateur est inscrit.            | _Aucune_                                     | `List[capsule_schema.CapsuleRead]` |
+| `GET`   | `/public`                                            | Liste les capsules publiques disponibles à l'inscription.           | _Aucune_                                     | `List[capsule_schema.CapsuleRead]` |
+| `GET`   | `/{domain}/{area}/{capsule_id}`                      | Récupère les détails complets d'une capsule.                        | _Aucune_                                     | `capsule_schema.CapsuleRead`     |
+| `POST`  | `/`                                                  | Génère une capsule à partir d'une classification.                   | `capsule_schema.CapsuleCreateRequest`        | `capsule_schema.CapsuleRead`     |
+| `POST`  | `/{capsule_id}/granule/{granule_order}/molecule/{molecule_order}` | Génère/récupère le contenu d'une leçon (molécule).                   | _Aucune_                                     | `List[capsule_schema.AtomRead]`   |

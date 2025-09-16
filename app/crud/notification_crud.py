@@ -31,7 +31,10 @@ def get_notifications_by_user(db: Session, user_id: int, skip: int = 0, limit: i
 def get_unread_notifications_count(db: Session, user_id: int) -> int:
     """Compte le nombre de notifications non lues."""
     return db.query(notification_model.Notification)\
-             .filter(notification_model.Notification.user_id == user_id, notification_model.Notification.status == 'unread')\
+             .filter(
+                 notification_model.Notification.user_id == user_id,
+                 notification_model.Notification.status == notification_model.NotificationStatus.UNREAD
+             )\
              .count()
 
 def mark_as_read(db: Session, notification_id: int, user_id: int) -> notification_model.Notification | None:
@@ -48,7 +51,10 @@ def mark_as_read(db: Session, notification_id: int, user_id: int) -> notificatio
 def mark_all_as_read(db: Session, user_id: int):
     """Marque toutes les notifications non lues d'un utilisateur comme lues."""
     db.query(notification_model.Notification)\
-      .filter(notification_model.Notification.user_id == user_id, notification_model.Notification.status == 'unread')\
+      .filter(
+          notification_model.Notification.user_id == user_id,
+          notification_model.Notification.status == notification_model.NotificationStatus.UNREAD
+      )\
       .update({"status": notification_model.NotificationStatus.READ})
     db.commit()
     return {"status": "success"}

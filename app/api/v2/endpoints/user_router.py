@@ -4,13 +4,13 @@ from app.schemas.user import user_schema
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from app.schemas.progress import personalization_schema
 from typing import List # Assurez-vous que List est importé
 from app.crud import user_crud
 from app.core import security
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
 from app.core.config import settings # <-- 1. ON IMPORTE LA CONFIG
+from app.schemas.capsule.capsule_schema import CapsuleProgressRead
 
 router = APIRouter()
 
@@ -62,14 +62,11 @@ def logout(response: Response):
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.get("/me/performance/{course_id}", response_model=List[personalization_schema.UserTopicPerformance])
-def read_user_performance(
-    course_id: int,
+@router.get("/me/capsule-progress", response_model=List[CapsuleProgressRead])
+def read_user_capsule_progress(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Récupère les statistiques de performance de l'utilisateur pour un cours donné."""
-    performance_data = user_crud.get_user_performance_in_course(
-        db=db, user_id=current_user.id, course_id=course_id
-    )
-    return performance_data
+    """Retourne la progression de l'utilisateur sur toutes ses capsules actives."""
+
+    return user_crud.get_user_capsule_progresses(db=db, user_id=current_user.id)

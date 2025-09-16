@@ -1,7 +1,7 @@
 # Fichier: nanshe/backend/app/crud/user_crud.py
 
 from sqlalchemy.orm import Session
-from app.models.progress import user_topic_performance_model # Ajoutez cet import en haut
+from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.user.user_model import User
 from app.schemas.user.user_schema import UserCreate
 from app.core.security import get_password_hash
@@ -56,8 +56,12 @@ def create_user(db: Session, user: UserCreate) -> User:
     db.refresh(db_user)
     return db_user
 
-def get_user_performance_in_course(db: Session, user_id: int, course_id: int):
-    return db.query(user_topic_performance_model.UserTopicPerformance).filter_by(
-        user_id=user_id,
-        course_id=course_id
-    ).order_by(user_topic_performance_model.UserTopicPerformance.mastery_score.asc()).all()
+def get_user_capsule_progresses(db: Session, user_id: int) -> list[UserCapsuleProgress]:
+    """Renvoie la progression de l'utilisateur pour chacune de ses capsules."""
+
+    return (
+        db.query(UserCapsuleProgress)
+        .filter(UserCapsuleProgress.user_id == user_id)
+        .order_by(UserCapsuleProgress.capsule_id.asc())
+        .all()
+    )

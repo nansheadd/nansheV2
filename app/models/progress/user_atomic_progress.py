@@ -1,6 +1,8 @@
-from sqlalchemy import Integer, String, Float, ForeignKey, UniqueConstraint
+from sqlalchemy import Integer, String, Float, ForeignKey, UniqueConstraint, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base_class import Base
+from datetime import datetime
+from typing import Optional
 
 class UserCharacterProgress(Base):
     """
@@ -49,9 +51,17 @@ class UserAtomProgress(Base):
     atom_id: Mapped[int] = mapped_column(ForeignKey('atoms.id'), index=True)
     
     # Statut de complétion
-    status: Mapped[str] = mapped_column(String(20), default='not_started') # not_started, in_progress, completed
+    status: Mapped[str] = mapped_column(String(20), default='not_started') # not_started, in_progress, failed, completed
     
     # Score ou force (de 0.0 à 1.0)
     strength: Mapped[float] = mapped_column(Float, default=0.0)
+
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0)
+    reset_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    xp_awarded: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint('user_id', 'atom_id', name='_user_atom_uc'),)

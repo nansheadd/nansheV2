@@ -1,24 +1,33 @@
-# Fichier: backend/app/schemas/progress_schema.py
+"""Schémas Pydantic pour les endpoints de progression capsule-first."""
 from pydantic import BaseModel, Field
 from typing import Dict, Any
 
-class AnswerCreate(BaseModel):
-    """
-    Schéma pour la soumission d'une réponse par l'utilisateur.
-    """
-    component_id: int
-    user_answer_json: Dict[str, Any] # ex: {"selected_option": 2}
+
+class ActivityStartRequest(BaseModel):
+    """Données nécessaires pour démarrer le suivi d'une activité."""
+
+    capsule_id: int
+    atom_id: int | None = None
+
+
+class ActivityEndRequest(BaseModel):
+    """Données nécessaires pour arrêter un suivi en cours."""
+
+    log_id: int
 
 
 class AnswerLogCreate(BaseModel):
+    """Payload minimal pour enregistrer la réponse d'un utilisateur à un atome."""
+
     atom_id: int
     is_correct: bool
-    # On utilise Field(..., alias='answer') pour que le frontend puisse envoyer "answer"
-    user_answer: Dict[str, Any] = Field(..., alias='answer')
+    # On conserve l'alias historique "answer" pour la compatibilité frontend
+    user_answer: Dict[str, Any] = Field(..., alias="answer")
 
-class AnswerResult(BaseModel):
-    """
-    Schéma pour la réponse de l'API après la soumission d'une réponse.
-    """
-    is_correct: bool
-    feedback: str # Un simple feedback textuel pour commencer
+
+class CapsuleProgressResponse(BaseModel):
+    """Structure de réponse renvoyée après mise à jour de progression."""
+
+    status: str
+    capsule_id: int
+    xp: int

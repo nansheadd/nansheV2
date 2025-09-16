@@ -1,7 +1,13 @@
 from sqlalchemy import Integer, ForeignKey, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from app.models.user.user_model import User
+    from app.models.capsule.capsule_model import Capsule
+    from app.models.capsule.atom_model import Atom
 
 class UserActivityLog(Base):
     __tablename__ = "user_activity_logs"
@@ -16,3 +22,8 @@ class UserActivityLog(Base):
     # On peut lier l'activité à un élément précis si besoin
     capsule_id: Mapped[int] = mapped_column(Integer, ForeignKey("capsules.id"), nullable=True)
     atom_id: Mapped[int] = mapped_column(Integer, ForeignKey("atoms.id"), nullable=True)
+
+    # --- Relations ---
+    user: Mapped["User"] = relationship(back_populates="activity_logs")
+    capsule: Mapped[Optional["Capsule"]] = relationship()
+    atom: Mapped[Optional["Atom"]] = relationship()

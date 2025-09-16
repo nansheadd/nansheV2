@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.user.user_model import User  # <-- Import the User model
+from app.models.progress.user_atomic_progress import UserAtomProgress
 
 from app.models.capsule.atom_model import Atom
 
@@ -119,26 +120,45 @@ class ProgressService:
         granule = molecule.granule
         capsule = granule.capsule
         
-        # 1. Calculer l'XP pour cet atome
-        xp_to_award = self._calculate_xp_for_atom(granule.order, len(molecule.atoms))
-        
-        # 2. Récupérer ou créer l'entrée de progression pour cette capsule
-        progress = self.db.query(UserCapsuleProgress).filter_by(
-            user_id=self.user_id,
-            capsule_id=capsule.id
-        ).first()
-
+        # Vérifier si l'atome n'a pas déjà été validé (évite le farm d'XP)
+        progress = (
+            self.db.query(UserCapsuleProgress)
+            .filter_by(user_id=self.user_id, capsule_id=capsule.id)
+            .first()
+        )
         if not progress:
-            progress = UserCapsuleProgress(user_id=self.user_id, capsule_id=capsule.id, skill_id=1) # skill_id à revoir
+            progress = UserCapsuleProgress(user_id=self.user_id, capsule_id=capsule.id, skill_id=1)
             self.db.add(progress)
-        
-        # 3. Mettre à jour l'XP
-        progress.xp += xp_to_award
-        
-        self.db.commit()
-        self.db.refresh(progress)
-        
-        logger.info(f"--- [PROGRESS] +{xp_to_award} XP accordés. Total pour la capsule: {progress.xp} XP ---")
+
+        atom_progress = (
+            self.db.query(UserAtomProgress)
+            .filter_by(user_id=self.user_id, atom_id=atom_id)
+            .first()
+        )
+        if not atom_progress:
+            atom_progress = UserAtomProgress(user_id=self.user_id, atom_id=atom_id)
+            self.db.add(atom_progress)
+
+        if not atom_progress.xp_awarded:
+            xp_to_award = self._calculate_xp_for_atom(granule.order, len(molecule.atoms))
+            progress.xp = (progress.xp or 0) + xp_to_award
+            atom_progress.xp_awarded = True
+            atom_progress.completed_at = datetime.utcnow()
+            atom_progress.status = 'completed'
+            self.db.commit()
+            self.db.refresh(progress)
+            logger.info(
+                "--- [PROGRESS] +%s XP accordés. Total pour la capsule: %s XP ---",
+                xp_to_award,
+                progress.xp,
+            )
+        else:
+            # assurer statut cohérent même sans nouvel XP
+            atom_progress.status = 'completed'
+            if not atom_progress.completed_at:
+                atom_progress.completed_at = datetime.utcnow()
+            self.db.commit()
+
         return progress
 
     def _calculate_xp_for_atom(self, level_order: int, num_atoms_in_molecule: int) -> int:

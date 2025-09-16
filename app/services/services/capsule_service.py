@@ -1,31 +1,36 @@
 import importlib
 import logging
 import json
-from sqlalchemy.orm import Session
-from fastapi import BackgroundTasks
+from typing import Dict, List, Optional
+
+from fastapi import BackgroundTasks, HTTPException
 from openai import OpenAI
-from typing import List
+from sqlalchemy.orm import Session
+
+from app.models.analytics.vector_store_model import VectorStore
 from app.models.capsule.atom_model import Atom
-from app.models.capsule.language_roadmap_model import LanguageRoadmap, LanguageRoadmapLevel, LevelSkillTarget, LevelFocus
-from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
-from app.services.services.capsules.others.default_builder import DefaultBuilder
 from app.models.capsule.capsule_model import Capsule, GenerationStatus
 from app.models.capsule.granule_model import Granule
+from app.models.capsule.language_roadmap_model import (
+    LanguageRoadmap,
+    LanguageRoadmapLevel,
+    LevelSkillTarget,
+    LevelFocus,
+)
 from app.models.capsule.molecule_model import Molecule
-from app.models.capsule.atom_model import Atom 
+from app.models.capsule.utility_models import UserCapsuleEnrollment
+from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
-
-
-
+from app.models.user.notification_model import NotificationCategory
+from app.models.user.user_model import User
+from app.crud import notification_crud
+from app.schemas.user import notification_schema
+from app.services.rag_utils import get_embedding
+from app.services.services.capsules.base_builder import BaseCapsuleBuilder
+from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
+from app.services.services.capsules.others.default_builder import DefaultBuilder
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.user.user_model import User
-from app.models.capsule.capsule_model import Capsule, GenerationStatus
-from app.models.analytics.vector_store_model import VectorStore
-from app.services.rag_utils import get_embedding
-
-# --- Builders ---
-from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 
 
 # --- Configuration ---
@@ -78,6 +83,199 @@ class CapsuleService:
     def __init__(self, db: Session, user: User):
         self.db = db
         self.user = user
+        self._progress_cache: Dict[int, UserAtomProgress] | None = None
+        self._progress_cache_capsule_id: Optional[int] = None
+
+    # ------------------------------------------------------------------
+    # Helpers de progression
+    # ------------------------------------------------------------------
+    def _get_progress_map_for_atom_ids(self, atom_ids: List[int]) -> Dict[int, UserAtomProgress]:
+        if not atom_ids:
+            return {}
+        entries = (
+            self.db.query(UserAtomProgress)
+            .filter(UserAtomProgress.user_id == self.user.id, UserAtomProgress.atom_id.in_(atom_ids))
+            .all()
+        )
+        return {entry.atom_id: entry for entry in entries}
+
+    def _get_progress_map_for_capsule(self, capsule: Capsule) -> Dict[int, UserAtomProgress]:
+        if self._progress_cache_capsule_id == capsule.id and self._progress_cache is not None:
+            return self._progress_cache
+        atom_ids: List[int] = []
+        for granule in capsule.granules:
+            for molecule in granule.molecules:
+                atom_ids.extend(atom.id for atom in molecule.atoms)
+        progress_map = self._get_progress_map_for_atom_ids(atom_ids)
+        self._progress_cache = progress_map
+        self._progress_cache_capsule_id = capsule.id
+        return progress_map
+
+    def _is_molecule_completed(self, molecule: Molecule, progress_map: Optional[Dict[int, UserAtomProgress]] = None) -> bool:
+        if not molecule.atoms:
+            return False
+        if progress_map is None:
+            progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in molecule.atoms])
+        for atom in molecule.atoms:
+            progress = progress_map.get(atom.id)
+            if not progress or progress.status != 'completed':
+                return False
+        return True
+
+    def _compute_molecule_progress_status(
+        self,
+        molecule: Molecule,
+        progress_map: Optional[Dict[int, UserAtomProgress]] = None,
+    ) -> str:
+        if progress_map is None:
+            progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in molecule.atoms])
+        if self._is_molecule_completed(molecule, progress_map):
+            return 'completed'
+        has_attempt = False
+        has_failure = False
+        for atom in molecule.atoms:
+            progress = progress_map.get(atom.id)
+            if progress:
+                if progress.status == 'failed':
+                    has_failure = True
+                if progress.attempts > 0:
+                    has_attempt = True
+        if has_failure:
+            return 'failed'
+        if has_attempt:
+            return 'in_progress'
+        return 'not_started'
+
+    def _is_granule_completed(
+        self,
+        granule: Granule,
+        progress_map: Optional[Dict[int, UserAtomProgress]] = None,
+    ) -> bool:
+        molecules = sorted(granule.molecules, key=lambda m: m.order)
+        if not molecules:
+            return False
+        for molecule in molecules:
+            if not self._is_molecule_completed(molecule, progress_map):
+                return False
+        return True
+
+    def _is_molecule_unlocked(self, molecule: Molecule) -> bool:
+        granule = molecule.granule
+        if granule.order > 1:
+            previous_granule = (
+                self.db.query(Granule)
+                .filter(Granule.capsule_id == granule.capsule_id, Granule.order == granule.order - 1)
+                .first()
+            )
+            if previous_granule and not self._is_granule_completed(previous_granule):
+                return False
+        if molecule.order > 1:
+            previous_molecule = (
+                self.db.query(Molecule)
+                .filter(Molecule.granule_id == granule.id, Molecule.order == molecule.order - 1)
+                .first()
+            )
+            if previous_molecule and not self._is_molecule_completed(previous_molecule):
+                return False
+        return True
+
+    def _ensure_molecule_unlocked(self, molecule: Molecule):
+        if not self._is_molecule_unlocked(molecule):
+            raise HTTPException(status_code=403, detail="molecule_locked")
+
+    def assert_molecule_unlocked(self, molecule: Molecule):
+        self._ensure_molecule_unlocked(molecule)
+
+    def _annotate_atoms_with_progress(self, atoms: List[Atom]) -> List[Atom]:
+        atoms_sorted = sorted(atoms, key=lambda a: a.order)
+        progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in atoms_sorted])
+        previous_completed = True
+        for atom in atoms_sorted:
+            progress = progress_map.get(atom.id)
+            progress_status = progress.status if progress else 'not_started'
+            setattr(atom, 'progress_status', progress_status)
+            setattr(atom, 'is_locked', not previous_completed)
+            if progress and progress.status == 'completed':
+                previous_completed = previous_completed and True
+            else:
+                previous_completed = False
+        return atoms_sorted
+
+    def annotate_capsule(self, capsule: Capsule) -> Capsule:
+        progress_map = self._get_progress_map_for_capsule(capsule)
+        completed_granules: Dict[int, bool] = {}
+        granules_sorted = sorted(capsule.granules, key=lambda g: g.order)
+        for granule in granules_sorted:
+            prev_granule_completed = completed_granules.get(granule.order - 1, granule.order == 1)
+            granule_locked = granule.order > 1 and not prev_granule_completed
+            setattr(granule, 'is_locked', granule_locked)
+            molecules_sorted = sorted(granule.molecules, key=lambda m: m.order)
+            prev_molecule_completed = prev_granule_completed
+            molecule_statuses = []
+            for molecule in molecules_sorted:
+                completed = self._is_molecule_completed(molecule, progress_map)
+                status = self._compute_molecule_progress_status(molecule, progress_map)
+                is_locked = granule_locked or (molecule.order > 1 and not prev_molecule_completed)
+                setattr(molecule, 'is_locked', is_locked)
+                setattr(molecule, 'progress_status', status)
+                molecule_statuses.append(status)
+                prev_molecule_completed = completed
+            granule_completed = all(self._is_molecule_completed(m, progress_map) for m in molecules_sorted) if molecules_sorted else False
+            completed_granules[granule.order] = granule_completed
+            if granule_completed:
+                progress_state = 'completed'
+            elif any(status != 'not_started' for status in molecule_statuses):
+                progress_state = 'in_progress'
+            else:
+                progress_state = 'not_started'
+            setattr(granule, 'progress_status', progress_state)
+        return capsule
+
+    def completion_snapshot(self, molecule: Molecule) -> Dict[str, bool | str]:
+        capsule = molecule.granule.capsule
+        progress_map = self._get_progress_map_for_capsule(capsule)
+        molecule_completed = self._is_molecule_completed(molecule, progress_map)
+        granule_completed = self._is_granule_completed(molecule.granule, progress_map)
+        progress_status = self._compute_molecule_progress_status(molecule, progress_map)
+
+        # Next molecule/granule unlock detection
+        next_molecule = (
+            self.db.query(Molecule)
+            .filter(Molecule.granule_id == molecule.granule_id, Molecule.order == molecule.order + 1)
+            .first()
+        )
+        next_molecule_unlocked = False
+        if next_molecule:
+            next_molecule_unlocked = self._is_molecule_unlocked(next_molecule)
+
+        next_granule_unlocked = granule_completed
+
+        return {
+            "progress_status": progress_status,
+            "molecule_completed": molecule_completed,
+            "granule_completed": granule_completed,
+            "next_molecule_unlocked": next_molecule_unlocked,
+            "next_granule_unlocked": next_granule_unlocked,
+        }
+
+    # ------------------------------------------------------------------
+    # Notifications utilitaires
+    # ------------------------------------------------------------------
+    def _notify(self, *, title: str, message: str, link: Optional[str] = None):
+        """Crée une notification capsule pour l'utilisateur courant."""
+        try:
+            notification_crud.create_notification(
+                self.db,
+                notification_schema.NotificationCreate(
+                    user_id=self.user.id,
+                    title=title,
+                    message=message,
+                    category=NotificationCategory.CAPSULE,
+                    link=link,
+                ),
+            )
+        except Exception as exc:  # ne jamais bloquer la génération pour un souci de notif
+            logger.error("[NOTIFY] Échec de création de notification: %s", exc, exc_info=True)
 
     def create_capsule(self, background_tasks: BackgroundTasks, classification_result: dict) -> Capsule:
         logger.info("\n--- [SERVICE] Début du processus de création de capsule ---")
@@ -124,12 +322,10 @@ class CapsuleService:
         
         # 1. S'assurer que la hiérarchie DB (Granule -> Molecule) existe
         molecule = builder.get_or_create_hierarchy(granule_order, molecule_order)
+        self._ensure_molecule_unlocked(molecule)
 
-        # 2. Construire le contenu (atomes) en utilisant la logique de recette du builder.
-        # Cette méthode est intelligente : elle ne génère que si les atomes n'existent pas.
-        atoms = builder.build_molecule_content(molecule)
-        
-        return atoms
+        # Réutilise la logique principale
+        return self.get_or_generate_atoms_for_molecule(molecule.id)
     
 
     def create_capsule_from_classification(self, classification_data: dict) -> Capsule:
@@ -153,8 +349,9 @@ class CapsuleService:
         self.db.refresh(new_capsule)
         logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée. ---")
 
-        enrollment = UserCourseProgress(user_id=self.user.id, capsule_id=new_capsule.id)
-        self.db.add(enrollment)
+        # Inscrire automatiquement le créateur et initialiser sa progression
+        self.db.add(UserCapsuleEnrollment(user_id=self.user.id, capsule_id=new_capsule.id))
+        self.db.add(UserCourseProgress(user_id=self.user.id, capsule_id=new_capsule.id))
         self.db.commit()
         logger.info(f"--- [SERVICE] Utilisateur {self.user.id} inscrit à la capsule {new_capsule.id}. ---")
 
@@ -203,12 +400,18 @@ class CapsuleService:
         first_molecule = self.db.query(Molecule).join(Granule).filter(
             Granule.capsule_id == new_capsule.id
         ).order_by(Granule.order, Molecule.order).first()
-        
+
         if first_molecule:
             builder.build_molecule_content(first_molecule)
             self.db.commit()
         else:
             logger.warning(f"--- [SERVICE] Le plan généré pour la capsule {new_capsule.id} est vide.")
+
+        self._notify(
+            title=f"Capsule prête : {new_capsule.title}",
+            message="Le plan d'apprentissage est disponible. Tu peux lancer la première leçon !",
+            link=f"/capsule/{new_capsule.domain}/{new_capsule.area}/{new_capsule.id}/plan",
+        )
 
         return new_capsule
     
@@ -224,6 +427,9 @@ class CapsuleService:
         if not completed_molecule:
             return []
 
+        self._progress_cache = None
+        self._progress_cache_capsule_id = None
+
         # === CORRECTION : Requête directe pour trouver la molécule suivante ===
         next_molecule = self.db.query(Molecule).filter(
             Molecule.granule_id == completed_molecule.granule_id,
@@ -234,15 +440,41 @@ class CapsuleService:
             logger.info("--- [SERVICE] Fin du granule ou de la capsule, pas de molécule suivante. ---")
             return []
 
+        self._ensure_molecule_unlocked(next_molecule)
+
         if next_molecule.atoms:
             logger.info(f"--- [SERVICE] Les atomes pour la molécule {next_molecule.id} existent déjà. On les retourne. ---")
-            return next_molecule.atoms
+            atoms_existing = sorted(next_molecule.atoms, key=lambda a: a.order)
+            return self._annotate_atoms_with_progress(atoms_existing)
+
+        if getattr(next_molecule, "generation_status", None) == GenerationStatus.PENDING:
+            logger.info("--- [SERVICE] Génération déjà en cours pour cette molécule. ---")
+            raise HTTPException(status_code=202, detail="generation_in_progress")
+
+        next_molecule.generation_status = GenerationStatus.PENDING
+        self.db.commit()
 
         builder = _get_builder_for_capsule(self.db, next_molecule.granule.capsule, self.user)
         
         logger.info(f"--- [SERVICE] Génération des atomes pour la molécule {next_molecule.id}... ---")
-        atoms = builder.build_molecule_content(next_molecule)
-        self.db.commit() # On sauvegarde les atomes créés par le builder
+        try:
+            atoms = builder.build_molecule_content(next_molecule)
+            self.db.commit()
+        except Exception as exc:
+            logger.error("Echec de génération pour la molécule %s : %s", next_molecule.id, exc, exc_info=True)
+            next_molecule.generation_status = GenerationStatus.FAILED
+            self.db.commit()
+            raise
+        else:
+            next_molecule.generation_status = GenerationStatus.COMPLETED
+            self.db.commit()
+
+        if atoms:
+            self._notify(
+                title="Nouvelle leçon débloquée",
+                message=f"La leçon '{next_molecule.title}' est prête dans la capsule {next_molecule.granule.capsule.title}.",
+                link=f"/capsule/{next_molecule.granule.capsule.domain}/{next_molecule.granule.capsule.area}/{next_molecule.granule.capsule.id}/plan",
+            )
         
         return atoms
     
@@ -258,25 +490,53 @@ class CapsuleService:
             logger.error(f"--- [SERVICE] Molécule ID {molecule_id} non trouvée.")
             return [] # Ou lever une HTTPException
 
+        self._progress_cache = None
+        self._progress_cache_capsule_id = None
+
+        self._ensure_molecule_unlocked(molecule)
+
         # 1. Vérifier si les atomes existent déjà (cache BDD)
         if molecule.atoms:
             logger.info(f"--- [SERVICE] Atomes trouvés en BDD pour la molécule '{molecule.title}'. Retour direct.")
-            return molecule.atoms
+            atoms_existing = sorted(molecule.atoms, key=lambda a: a.order)
+            return self._annotate_atoms_with_progress(atoms_existing)
 
         # 2. Si non, on les génère
         logger.info(f"--- [SERVICE] Aucun atome trouvé. Lancement de la génération pour '{molecule.title}'.")
         capsule = molecule.granule.capsule
-        
+
         # On utilise votre dispatcher existant pour obtenir le bon builder
         builder = _get_builder_for_capsule(self.db, capsule, self.user)
         
-        # On appelle la méthode du builder qui contient la logique de génération
-        atoms = builder.build_molecule_content(molecule)
-        
-        # La méthode du builder doit faire le commit, mais on s'assure de rafraîchir
-        self.db.refresh(molecule)
-        
-        return molecule.atoms
+        if getattr(molecule, "generation_status", None) == GenerationStatus.PENDING:
+            logger.info("--- [SERVICE] Génération déjà en cours pour cette molécule. ---")
+            raise HTTPException(status_code=202, detail="generation_in_progress")
+
+        molecule.generation_status = GenerationStatus.PENDING
+        self.db.commit()
+
+        try:
+            atoms = builder.build_molecule_content(molecule)
+            self.db.commit()
+        except Exception as exc:
+            logger.error("Echec de génération d'atomes pour la molécule %s : %s", molecule.id, exc, exc_info=True)
+            molecule.generation_status = GenerationStatus.FAILED
+            self.db.commit()
+            raise
+        else:
+            self.db.refresh(molecule)
+            molecule.generation_status = GenerationStatus.COMPLETED
+            self.db.commit()
+
+        if atoms:
+            self._notify(
+                title="Contenu généré",
+                message=f"Les ressources de la leçon '{molecule.title}' sont disponibles.",
+                link=f"/capsule/{capsule.domain}/{capsule.area}/{capsule.id}/plan",
+            )
+
+        atoms_sorted = sorted(molecule.atoms, key=lambda a: a.order)
+        return self._annotate_atoms_with_progress(atoms_sorted)
     
     def generate_and_save_plan(self, capsule_id: int, user_id: int):
         """

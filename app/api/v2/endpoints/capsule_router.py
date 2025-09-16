@@ -226,6 +226,9 @@ def get_capsule(
             db, user_id=current_user.id, capsule_id=capsule.id
         )
 
+    service = CapsuleService(db=db, user=current_user)
+    capsule = service.annotate_capsule(capsule)
+
     logger.info(f"--- [API] Capsule trouvée, renvoi des données. <💊Capsule(id={capsule.id})>")
     return capsule
 
@@ -399,7 +402,10 @@ def create_molecule_content(
         molecule = molecule_model.Molecule(granule_id=granule.id, order=moleculeOrder, title=molecule_title)
         db.add(molecule)
         db.flush()
-    
+
+    service = CapsuleService(db=db, user=current_user)
+    service.assert_molecule_unlocked(molecule)
+
     # Vérifier si le contenu de la leçon (Atom) existe déjà
     existing_atom = db.query(atom_model.Atom).filter_by(molecule_id=molecule.id, content_type=atom_model.AtomContentType.LESSON).first()
     if existing_atom:
