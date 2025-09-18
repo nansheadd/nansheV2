@@ -38,6 +38,7 @@ from app.api.v2 import dependencies
 from app.crud import roadmap_crud
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
 from app.schemas.capsule.capsule_schema import CapsuleReadWithRoadmap # Le nouveau schéma
+from app.crud import badge_crud
 
 
 
@@ -280,6 +281,13 @@ def enroll_in_capsule(
     new_enrollment = utility_models.UserCapsuleEnrollment(user_id=current_user.id, capsule_id=capsule_id)
     db.add(new_enrollment)
     db.commit()
+    # Badges d'inscription: première inscription à une capsule
+    try:
+        enroll_count = db.query(utility_models.UserCapsuleEnrollment).filter_by(user_id=current_user.id).count()
+        if enroll_count == 1:
+            badge_crud.award_badge(db, current_user.id, "apprenant-premiere-inscription-capsule")
+    except Exception:
+        pass
     return capsule
 
 @router.post("/{capsule_id}/unenroll", response_model=capsule_schema.CapsuleRead, summary="Se désinscrire d'une capsule")

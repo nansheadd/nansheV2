@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Any, List, Optional
 
 from sqlalchemy.orm import Session
@@ -11,12 +13,62 @@ from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from app.core import ai_service
 
 
-class PythonProgrammingBuilder(BaseCapsuleBuilder):
-    """Builder spécialisé pour les capsules de programmation Python."""
+class ProgrammingBuilder(BaseCapsuleBuilder):
+    """Builder générique pour les capsules de programmation (Python, JS, SQL, etc.)."""
 
     def __init__(self, db: Session, capsule: Capsule, user: User):
         super().__init__(db=db, capsule=capsule, user=user)
         self.atom_service = AtomService(db=db, user=user, capsule=capsule)
+        self.language = self._detect_language()
+
+    # -----------------------------
+    # Helpers
+    # -----------------------------
+
+    def _detect_language(self) -> str:
+        text = " ".join(
+            filter(
+                None,
+                [
+                    (self.capsule.main_skill or ""),
+                    (self.capsule.area or ""),
+                    (self.capsule.description or ""),
+                ],
+            )
+        ).lower()
+
+        language_map = {
+            'python': 'python',
+            'py': 'python',
+            'javascript': 'javascript',
+            'typescript': 'javascript',
+            'node': 'javascript',
+            'js': 'javascript',
+            'react': 'javascript',
+            'sql': 'sql',
+            'postgres': 'sql',
+            'postgresql': 'sql',
+            'mysql': 'sql',
+            'sqlite': 'sql',
+            'java ': 'java',
+            'kotlin': 'java',
+            'swift': 'swift',
+            'go ': 'go',
+            'rust': 'rust',
+            'c#': 'csharp',
+            'c++': 'cpp',
+            'php': 'php',
+        }
+
+        for key, lang in language_map.items():
+            if key in text:
+                return lang
+
+        return 'python'
+
+    # -----------------------------
+    # Overrides
+    # -----------------------------
 
     def generate_learning_plan(self, db: Session, capsule: Capsule) -> Dict[str, Any] | None:
         existing_plan = self._find_plan_in_vector_store(db, capsule.main_skill)
@@ -26,7 +78,7 @@ class PythonProgrammingBuilder(BaseCapsuleBuilder):
         rag_examples = self._find_inspirational_examples(db, capsule.domain, capsule.area)
         plan = ai_service.generate_programming_learning_plan(
             main_skill=capsule.main_skill,
-            language='python',
+            language=self.language,
             rag_examples=rag_examples,
             model_choice="gpt-5-mini-2025-08-07",
         )
@@ -37,9 +89,9 @@ class PythonProgrammingBuilder(BaseCapsuleBuilder):
         return plan
 
     def _get_molecule_recipe(self, molecule: Molecule) -> List[Dict[str, Any]]:
-        """Définit la recette d'une leçon de programmation."""
+        label = self.language.capitalize()
         return [
-            {"type": AtomContentType.LESSON, "title": "Concept clé"},
+            {"type": AtomContentType.LESSON, "title": f"Concept clé ({label})"},
             {"type": AtomContentType.CODE_EXAMPLE, "title": "Exemple guidé"},
             {"type": AtomContentType.QUIZ, "title": "Quiz de compréhension", "difficulty": "moyen"},
             {"type": AtomContentType.CODE_CHALLENGE, "title": "Challenge pratique"},

@@ -8,6 +8,8 @@ from app.models.user.user_model import User  # <-- Import the User model
 from app.models.progress.user_atomic_progress import UserAtomProgress
 
 from app.models.capsule.atom_model import Atom
+from app.crud import badge_crud
+from app.models.progress.user_atomic_progress import UserAtomProgress
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +154,24 @@ class ProgressService:
                 xp_to_award,
                 progress.xp,
             )
+            # Badges liés à la complétion
+            try:
+                badge_crud.award_badge(self.db, self.user_id, "explorateur-premiere-lecon")
+                # Seuils multi-leçons
+                total_completed = (
+                    self.db.query(UserAtomProgress)
+                    .filter(
+                        UserAtomProgress.user_id == self.user_id,
+                        UserAtomProgress.status == 'completed'
+                    )
+                    .count()
+                )
+                if total_completed >= 10:
+                    badge_crud.award_badge(self.db, self.user_id, "explorateur-dix-lecons")
+                if total_completed >= 50:
+                    badge_crud.award_badge(self.db, self.user_id, "explorateur-cinquante-lecons")
+            except Exception:
+                pass
         else:
             # assurer statut cohérent même sans nouvel XP
             atom_progress.status = 'completed'

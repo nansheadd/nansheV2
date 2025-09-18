@@ -44,13 +44,20 @@ app = FastAPI(
 )
 # --- Configuration des Middlewares ---
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+origins = [
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # --- Initialisation de l'Admin ---
 class AdminAuth(AuthenticationBackend):

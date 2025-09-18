@@ -6,6 +6,7 @@ from typing import List
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
 from app.crud import notification_crud
+from app.crud import badge_crud
 from app.schemas.user import notification_schema
 
 router = APIRouter()
@@ -36,7 +37,13 @@ def mark_notification_as_read(
     current_user: User = Depends(get_current_user)
 ):
     """Change le statut d'une notification de 'unread' à 'read'."""
-    return notification_crud.mark_as_read(db, notification_id=notification_id, user_id=current_user.id)
+    notif = notification_crud.mark_as_read(db, notification_id=notification_id, user_id=current_user.id)
+    try:
+        # Badge: première notification lue
+        badge_crud.award_badge(db, current_user.id, "initiation-premiere-notification")
+    except Exception:
+        pass
+    return notif
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT, summary="Marquer toutes les notifications comme lues")
 def mark_all_notifications_as_read(

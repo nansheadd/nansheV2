@@ -6,11 +6,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List # Assurez-vous que List est importé
 from app.crud import user_crud
+from app.crud import badge_crud
 from app.core import security
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
 from app.core.config import settings # <-- 1. ON IMPORTE LA CONFIG
 from app.schemas.capsule.capsule_schema import CapsuleProgressRead
+from app.gamification.badge_rules import compute_profile_completeness
 
 router = APIRouter()
 
@@ -22,6 +24,11 @@ def create_user_endpoint(user_in: user_schema.UserCreate, db: Session = Depends(
     if user_crud.get_user_by_username(db, username=user_in.username):
         raise HTTPException(status_code=400, detail="Username already taken")
     user = user_crud.create_user(db=db, user=user_in)
+    try:
+        # Badge d'inscription (onboarding)
+        badge_crud.award_badge(db, user.id, "initiation-inscription")
+    except Exception:
+        pass
     return user
 
 @router.post("/login")
@@ -51,6 +58,11 @@ def login_for_access_token(
         secure=secure_cookie, # <-- 3. ON UTILISE NOTRE VARIABLE
         path="/"
     )
+    try:
+        # Badge première connexion
+        badge_crud.award_badge(db, user.id, "voyageur-premiere-connexion")
+    except Exception:
+        pass
     return {"message": "Login successful"}
 
 @router.post("/logout")
@@ -60,6 +72,36 @@ def logout(response: Response):
 
 @router.get("/me", response_model=user_schema.User)
 def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+@router.patch("/me", response_model=user_schema.User)
+def update_me(
+    payload: user_schema.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Met à jour les informations du profil de l'utilisateur (actuellement: full_name).
+    Déclenche le badge de profil complété si le profil atteint 100%."""
+    # Pour rester safe: on ne met à jour que full_name pour l'instant
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name.strip() or None
+    db.commit()
+    db.refresh(current_user)
+
+    # Calcul de complétion du profil et attribution du badge si applicable
+    try:
+        # Nombre d'inscriptions actives
+        from app.models.capsule.utility_models import UserCapsuleEnrollment
+        enrolled_count = db.query(UserCapsuleEnrollment).filter_by(user_id=current_user.id).count()
+        completeness = compute_profile_completeness(
+            has_full_name=bool(current_user.full_name),
+            enrolled_count=enrolled_count,
+        )
+        if completeness >= 100:
+            badge_crud.award_badge(db, current_user.id, "initiation-profil-complet")
+    except Exception:
+        pass
+
     return current_user
 
 @router.get("/me/capsule-progress", response_model=List[CapsuleProgressRead])

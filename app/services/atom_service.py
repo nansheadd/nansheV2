@@ -131,14 +131,33 @@ class AtomService:
         return ""
 
     def _language_from_capsule(self) -> str:
-        area = (self.capsule.area or "").lower()
-        if "python" in area:
-            return "python"
-        if "javascript" in area:
-            return "javascript"
-        if "sql" in area:
-            return "sql"
-        return "python"
+        fields = [
+            (self.capsule.area or ""),
+            (self.capsule.main_skill or ""),
+            getattr(self.capsule, "description", "") or "",
+        ]
+        text = " ".join(fields).lower()
+
+        candidates = [
+            (['python', 'py'], 'python'),
+            (['javascript', 'typescript', 'node', 'js', 'react'], 'javascript'),
+            (['sql', 'postgres', 'mysql', 'sqlite'], 'sql'),
+            (['java '], 'java'),
+            (['swift'], 'swift'),
+            (['kotlin'], 'java'),
+            (['go '], 'go'),
+            (['rust'], 'rust'),
+            (['c#'], 'csharp'),
+            (['c++'], 'cpp'),
+            (['php'], 'php'),
+        ]
+
+        for keywords, lang in candidates:
+            for keyword in keywords:
+                if keyword in text:
+                    return lang
+
+        return 'python'
 
     def _create_code_example_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
         lesson_text = self._extract_lesson_text(context_atoms)

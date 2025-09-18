@@ -65,3 +65,7 @@ def get_user_capsule_progresses(db: Session, user_id: int) -> list[UserCapsulePr
         .order_by(UserCapsuleProgress.capsule_id.asc())
         .all()
     )
+
+def get_user_by_stripe_id(db: Session, *, stripe_id: str) -> User | None:
+    """Récupère un utilisateur par son stripe_customer_id."""
+    return db.query(User).filter(User.stripe_customer_id == stripe_id).first()

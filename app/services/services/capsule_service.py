@@ -29,7 +29,8 @@ from app.services.rag_utils import get_embedding
 from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
 from app.services.services.capsules.others.default_builder import DefaultBuilder
-from app.services.services.capsules.programming import PythonProgrammingBuilder
+from app.services.services.capsules.programming import ProgrammingBuilder
+from app.crud import badge_crud
 from app.core.config import settings
 from app.db.session import SessionLocal
 
@@ -55,8 +56,7 @@ def _get_builder_for_capsule(db: Session, capsule: Capsule, user: User) -> BaseC
 
     if domain == "programming":
         area = (capsule.area or "").lower()
-        if "python" in area or not area:
-            return PythonProgrammingBuilder(db=db, capsule=capsule, user=user)
+        return ProgrammingBuilder(db=db, capsule=capsule, user=user)
 
     return DefaultBuilder(db=db, capsule=capsule, user=user)
 
@@ -317,6 +317,26 @@ class CapsuleService:
         self.db.refresh(new_capsule)
         
         logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée. Lancement de la génération du plan en fond. ---")
+        # Badges de création
+        try:
+            badge_crud.award_badge(self.db, self.user.id, "artisan-premiere-capsule")
+            total_created = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id).count()
+            if total_created >= 5:
+                badge_crud.award_badge(self.db, self.user.id, "artisan-cinq-capsules")
+            # Badges uniques par type: premier dans le domaine/area pour CET utilisateur
+            domain_count = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id, Capsule.domain == new_capsule.domain).count()
+            if domain_count == 1:
+                badge_crud.award_pioneer_for_domain(self.db, self.user.id, new_capsule.domain)
+            area_count = self.db.query(Capsule).filter(
+                Capsule.creator_id == self.user.id,
+                Capsule.domain == new_capsule.domain,
+                Capsule.area == new_capsule.area,
+            ).count()
+            if area_count == 1:
+                badge_crud.award_pioneer_for_area(self.db, self.user.id, new_capsule.domain, new_capsule.area)
+        except Exception:
+            pass
+
         background_tasks.add_task(self.generate_and_save_plan, new_capsule.id, self.user.id)
         return new_capsule
     
@@ -362,6 +382,25 @@ class CapsuleService:
         self.db.add(UserCourseProgress(user_id=self.user.id, capsule_id=new_capsule.id))
         self.db.commit()
         logger.info(f"--- [SERVICE] Utilisateur {self.user.id} inscrit à la capsule {new_capsule.id}. ---")
+
+        try:
+            badge_crud.award_badge(self.db, self.user.id, "artisan-premiere-capsule")
+            total_created = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id).count()
+            if total_created >= 5:
+                badge_crud.award_badge(self.db, self.user.id, "artisan-cinq-capsules")
+            # Badges uniques par type (première capsule de l'utilisateur dans domaine/area)
+            domain_count = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id, Capsule.domain == new_capsule.domain).count()
+            if domain_count == 1:
+                badge_crud.award_pioneer_for_domain(self.db, self.user.id, new_capsule.domain)
+            area_count = self.db.query(Capsule).filter(
+                Capsule.creator_id == self.user.id,
+                Capsule.domain == new_capsule.domain,
+                Capsule.area == new_capsule.area,
+            ).count()
+            if area_count == 1:
+                badge_crud.award_pioneer_for_area(self.db, self.user.id, new_capsule.domain, new_capsule.area)
+        except Exception:
+            pass
 
         builder = _get_builder_for_capsule(self.db, new_capsule, self.user)
         

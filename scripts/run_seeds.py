@@ -10,7 +10,9 @@ from sqlalchemy import func
 # --- Configuration du chemin et des imports ---
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from app.db.base import Base  # noqa: F401 - Crucial pour charger tous les modèles
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, sync_engine
+from sqlalchemy import text
+from app.core.security import get_password_hash
 from app.models.capsule.capsule_model import Capsule, GenerationStatus
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.user.user_model import User
@@ -21,6 +23,7 @@ from app.models.capsule.language_roadmap_model import (
     TargetMeasurement, CheckType, RewardType
 )
 from app.services.rag_utils import get_embedding
+from app.models.user.badge_model import Badge
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,7 +40,9 @@ def get_or_create_default_user(db: Session) -> User:
         logger.info("Création de l'utilisateur système 'system@nanshe.ai'")
         system_user = User(
             username="system", email="system@nanshe.ai",
-            hashed_password="password", is_active=True, is_superuser=True
+            hashed_password=get_password_hash("system"),
+            is_active=True,
+            is_superuser=True,
         )
         db.add(system_user)
         db.commit(); db.refresh(system_user)
@@ -104,6 +109,118 @@ def seed_skills(db: Session):
     
     db.commit()
     logger.info(f"✅ Phase 2 terminée: {count} nouvelles compétences ajoutées.")
+
+
+def seed_badges(db: Session):
+    logger.info("--- Phase 2b: Seeding des badges ---")
+    badge_defs = [
+        # Découverte / Initiation (système)
+        {
+            "name": "Premier pas",
+            "slug": "initiation-inscription",
+            "description": "Inscription terminée. Bienvenue à bord !",
+            "icon": "rocket",
+            "category": "Initiation",
+            "points": 5,
+        },
+        {
+            "name": "Profil complet",
+            "slug": "initiation-profil-complet",
+            "description": "Tu as complété ton profil.",
+            "icon": "starter",
+            "category": "Initiation",
+            "points": 10,
+        },
+        {
+            "name": "Pionnier",
+            "slug": "voyageur-premiere-connexion",
+            "description": "Première connexion réussie.",
+            "icon": "starter",
+            "category": "Initiation",
+            "points": 5,
+        },
+        {
+            "name": "Artisan en herbe",
+            "slug": "artisan-premiere-capsule",
+            "description": "Première capsule générée",
+            "icon": "creator",
+            "category": "Artisan",
+            "points": 15,
+        },
+        {
+            "name": "Explorateur",
+            "slug": "explorateur-premiere-lecon",
+            "description": "Vous avez terminé votre première leçon.",
+            "icon": "explorer",
+            "category": "Exploration",
+            "points": 10,
+        },
+        {
+            "name": "Architecte",
+            "slug": "artisan-cinq-capsules",
+            "description": "Cinq capsules créées",
+            "icon": "architect",
+            "category": "Artisan",
+            "points": 30,
+        },
+        {
+            "name": "Voyageur aguerri",
+            "slug": "explorateur-dix-lecons",
+            "description": "Dix leçons terminées",
+            "icon": "adventurer",
+            "category": "Exploration",
+            "points": 40,
+        },
+        {
+            "name": "Marathonien",
+            "slug": "explorateur-cinquante-lecons",
+            "description": "Cinquante leçons terminées",
+            "icon": "marathon",
+            "category": "Exploration",
+            "points": 80,
+        },
+        {
+            "name": "Porteur de flambeau",
+            "slug": "initiation-premiere-notification",
+            "description": "Vous avez ouvert votre première notification.",
+            "icon": "torch",
+            "category": "Initiation",
+            "points": 5,
+        },
+        {
+            "name": "Premier pas en capsule",
+            "slug": "apprenant-premiere-inscription-capsule",
+            "description": "Tu t'es inscrit(e) à une capsule pour la première fois.",
+            "icon": "explorer",
+            "category": "Exploration",
+            "points": 10,
+        },
+        # Collection / Meta
+        {
+            "name": "Collectionneur",
+            "slug": "collection-dix-badges",
+            "description": "Dix badges débloqués",
+            "icon": "collection",
+            "category": "Collection",
+            "points": 25,
+        },
+    ]
+
+    count = 0
+    for data in badge_defs:
+        exists = db.query(Badge).filter(Badge.slug == data["slug"]).first()
+        if not exists:
+            db.add(Badge(**data))
+            count += 1
+        else:
+            # Mise à jour légère si le badge existe déjà (nom/desc/catégorie/points/icon)
+            exists.name = data["name"]
+            exists.description = data["description"]
+            exists.category = data["category"]
+            exists.points = data["points"]
+            exists.icon = data.get("icon", exists.icon)
+    db.commit()
+    logger.info(f"✅ Phase 2b terminée: {count} badges ajoutés ou mis à jour.")
 
 
 def seed_language_roadmaps(db: Session, system_user: User):
@@ -200,9 +317,13 @@ def seed_language_roadmaps(db: Session, system_user: User):
 if __name__ == "__main__":
     db_session = SessionLocal()
     try:
+        with sync_engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        Base.metadata.create_all(bind=sync_engine)
         user = get_or_create_default_user(db_session)
         seed_classifier_examples(db_session)
         seed_skills(db_session)
+        seed_badges(db_session)
         seed_language_roadmaps(db_session, user)
     finally:
         db_session.close()

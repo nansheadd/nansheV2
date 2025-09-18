@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.models.user import notification_model
 from app.schemas.user import notification_schema
+from app.notifications.websocket_manager import notification_ws_manager
 
 def create_notification(db: Session, notification: notification_schema.NotificationCreate) -> notification_model.Notification:
     """Crée une nouvelle notification pour un utilisateur."""
@@ -17,6 +18,12 @@ def create_notification(db: Session, notification: notification_schema.Notificat
     db.add(db_notification)
     db.commit()
     db.refresh(db_notification)
+    unread = get_unread_notifications_count(db, notification.user_id)
+    payload = notification_schema.NotificationRead.model_validate(db_notification).model_dump()
+    notification_ws_manager.notify(
+        notification.user_id,
+        {"type": "notification_created", "notification": payload, "unread_count": unread},
+    )
     return db_notification
 
 def get_notifications_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[notification_model.Notification]:
@@ -46,6 +53,15 @@ def mark_as_read(db: Session, notification_id: int, user_id: int) -> notificatio
         db_notification.status = notification_model.NotificationStatus.READ
         db.commit()
         db.refresh(db_notification)
+        unread = get_unread_notifications_count(db, user_id)
+        notification_ws_manager.notify(
+            user_id,
+            {
+                "type": "notification_updated",
+                "notification_id": notification_id,
+                "unread_count": unread,
+            },
+        )
     return db_notification
 
 def mark_all_as_read(db: Session, user_id: int):
@@ -57,4 +73,11 @@ def mark_all_as_read(db: Session, user_id: int):
       )\
       .update({"status": notification_model.NotificationStatus.READ})
     db.commit()
+    notification_ws_manager.notify(
+        user_id,
+        {
+            "type": "notifications_cleared",
+            "unread_count": 0,
+        },
+    )
     return {"status": "success"}
