@@ -1,7 +1,6 @@
 # Fichier: nanshev3/backend/app/api/v2/endpoints/notification_ws.py (VERSION FINALE)
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, status
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.api.v2.dependencies import get_db, _decode_user_from_token
 from app.notifications.websocket_manager import notification_ws_manager
@@ -14,13 +13,18 @@ router = APIRouter()
 async def notifications_ws(
     websocket: WebSocket,
     db: Session = Depends(get_db),
-    token: str = Query(...)  # On attend obligatoirement le token dans l'URL
 ):
     """
     Établit une connexion WebSocket qui s'authentifie via un token
     passé en paramètre d'URL.
     """
     try:
+        token = websocket.query_params.get("token")
+        if not token:
+            logging.warning("Connexion WebSocket refusée : aucun token fourni dans la requête.")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
         # On valide le token et on récupère l'utilisateur.
         # Si le token est invalide, une exception sera levée.
         current_user = _decode_user_from_token(token, db)
@@ -40,3 +44,7 @@ async def notifications_ws(
     except WebSocketDisconnect:
         notification_ws_manager.disconnect(current_user.id, websocket)
         logging.info(f"🔌 WebSocket déconnecté pour l'utilisateur {current_user.id}")
+
+
+# Compatibilité : accepte également l'ancienne URL /api/v2/notifications/ws
+router.add_api_websocket_route("/notifications/ws", notifications_ws)
