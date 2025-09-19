@@ -90,12 +90,33 @@ class ProgrammingBuilder(BaseCapsuleBuilder):
 
     def _get_molecule_recipe(self, molecule: Molecule) -> List[Dict[str, Any]]:
         label = self.language.capitalize()
+        progression = self.atom_service.compute_progression_stage(molecule)
+        stage_difficulty = progression.get("difficulty", "intermédiaire")
+
         return [
             {"type": AtomContentType.LESSON, "title": f"Concept clé ({label})"},
             {"type": AtomContentType.CODE_EXAMPLE, "title": "Exemple guidé"},
             {"type": AtomContentType.QUIZ, "title": "Quiz de compréhension", "difficulty": "moyen"},
-            {"type": AtomContentType.CODE_CHALLENGE, "title": "Challenge pratique"},
-            {"type": AtomContentType.LIVE_CODE_EXECUTOR, "title": "Atelier interactif"},
+            {
+                "type": AtomContentType.LIVE_CODE_EXECUTOR,
+                "title": "Atelier interactif",
+                "difficulty": stage_difficulty,
+            },
+            {
+                "type": AtomContentType.CODE_CHALLENGE,
+                "title": "Challenge pratique",
+                "difficulty": stage_difficulty,
+            },
+            {
+                "type": AtomContentType.CODE_SANDBOX_SETUP,
+                "title": "Prépare ton espace sécurisé",
+                "difficulty": stage_difficulty,
+            },
+            {
+                "type": AtomContentType.CODE_PROJECT_BRIEF,
+                "title": f"Projet de validation — {progression.get('label', 'Parcours')}",
+                "difficulty": stage_difficulty,
+            },
         ]
 
     def _build_atom_content(
