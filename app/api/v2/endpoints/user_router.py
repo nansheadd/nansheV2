@@ -1,7 +1,7 @@
 # Fichier: nanshe/backend/app/api/v2/endpoints/user_router.py (CORRIGÉ)
 
 from app.schemas.user import user_schema
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List # Assurez-vous que List est importé
@@ -13,23 +13,39 @@ from app.models.user.user_model import User
 from app.core.config import settings # <-- 1. ON IMPORTE LA CONFIG
 from app.schemas.capsule.capsule_schema import CapsuleProgressRead
 from app.gamification.badge_rules import compute_profile_completeness
+from app.services.email.email_service import send_confirm_email  # <-- import
 
 router = APIRouter()
 
 @router.post("/", response_model=user_schema.User, status_code=status.HTTP_201_CREATED)
-def create_user_endpoint(user_in: user_schema.UserCreate, db: Session = Depends(get_db)):
-    # (le reste de cette fonction ne change pas)
+async def create_user_endpoint(
+    user_in: user_schema.UserCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     if user_crud.get_user_by_email(db, email=user_in.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     if user_crud.get_user_by_username(db, username=user_in.username):
         raise HTTPException(status_code=400, detail="Username already taken")
+
     user = user_crud.create_user(db=db, user=user_in)
+
+    # 🔔 ENVOI DU MAIL DE CONFIRMATION
+    # langue depuis le header envoyé par le front (fallback fr)
+    lang = request.headers.get("x-app-lang", "fr")
     try:
-        # Badge d'inscription (onboarding)
+        await send_confirm_email(db, user, lang)
+    except Exception as e:
+        # log doux, on n'échoue pas l’inscription si l’email part mal
+        import logging; logging.getLogger(__name__).warning(f"send_confirm_email failed: {e}")
+
+    try:
         badge_crud.award_badge(db, user.id, "initiation-inscription")
     except Exception:
         pass
     return user
+
+
 
 @router.post("/login")
 def login_for_access_token(
