@@ -6,7 +6,7 @@ from app.core import ai_service
 from app.models.user.user_model import User
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from app.models.capsule.atom_model import Atom, AtomContentType
 
 class AtomService:
@@ -31,6 +31,10 @@ class AtomService:
             return self._create_code_challenge_content(molecule, context_atoms)
         if atom_type == AtomContentType.LIVE_CODE_EXECUTOR:
             return self._create_live_code_executor_content(molecule, context_atoms)
+        if atom_type == AtomContentType.CODE_SANDBOX_SETUP:
+            return self._create_code_sandbox_setup_content(molecule, difficulty)
+        if atom_type == AtomContentType.CODE_PROJECT_BRIEF:
+            return self._create_code_project_brief_content(molecule, context_atoms, difficulty)
         # Ajoutez d'autres types d'atomes ici à l'avenir
         # if atom_type == AtomContentType.CODE_CHALLENGE:
         #     return self._create_code_challenge_content(molecule)
@@ -159,6 +163,49 @@ class AtomService:
 
         return 'python'
 
+    def compute_progression_stage(self, molecule: Molecule) -> Dict[str, Any]:
+        """Évalue la position de la molécule dans le parcours pour ajuster les projets."""
+        granules = sorted(self.capsule.granules, key=lambda g: g.order or 0)
+        sequence: List[Molecule] = []
+        for granule in granules:
+            sequence.extend(sorted(granule.molecules, key=lambda m: m.order or 0))
+
+        total = len(sequence) or 1
+        index = 0
+        for idx, existing in enumerate(sequence):
+            if existing.id == molecule.id:
+                index = idx
+                break
+
+        denominator = max(total - 1, 1)
+        ratio = index / denominator if total > 1 else 0.0
+
+        stage_definitions = [
+            {"slug": "foundation", "label": "Phase découverte", "difficulty": "débutant"},
+            {"slug": "consolidation", "label": "Phase consolidation", "difficulty": "intermédiaire"},
+            {"slug": "application", "label": "Phase application", "difficulty": "avancé"},
+            {"slug": "mastery", "label": "Phase maîtrise", "difficulty": "expert"},
+        ]
+
+        if total <= 1:
+            stage_idx = 0
+        elif ratio < 0.25:
+            stage_idx = 0
+        elif ratio < 0.5:
+            stage_idx = 1
+        elif ratio < 0.75:
+            stage_idx = 2
+        else:
+            stage_idx = 3
+
+        stage = stage_definitions[stage_idx]
+        return {
+            "position": index + 1,
+            "total_molecules": total,
+            "ratio": ratio if total > 1 else 0.0,
+            **stage,
+        }
+
     def _create_code_example_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
         lesson_text = self._extract_lesson_text(context_atoms)
         language = self._language_from_capsule()
@@ -211,4 +258,171 @@ class AtomService:
             "instructions": "Utilise l'éditeur pour expérimenter avec le concept étudié.",
             "starter_code": challenge_content.get("starter_code", ""),
             "hints": challenge_content.get("hints", []),
+        }
+
+    def _create_code_sandbox_setup_content(self, molecule: Molecule, difficulty: Optional[str]) -> Dict[str, Any]:
+        language = self._language_from_capsule()
+        stage = self.compute_progression_stage(molecule)
+        target_difficulty = difficulty or stage.get("difficulty")
+
+        content = ai_service.generate_code_sandbox_setup(
+            lesson_title=molecule.title,
+            language=language,
+            stage=stage,
+            model_choice="gpt-5-mini-2025-08-07",
+        )
+
+        if content:
+            content.setdefault("title", f"Espace de pratique sécurisé — {molecule.title}")
+            content.setdefault("language", language)
+            content.setdefault("difficulty", target_difficulty)
+            content.setdefault("progression_stage", stage)
+            security = content.setdefault("security", {})
+            security.setdefault("code_submission_allowed", False)
+            security.setdefault("sandbox_mode", "client_isolated")
+            guidelines = security.setdefault("safe_usage_guidelines", [])
+            reminder = "Ne colle jamais ton code dans la plateforme : exécute-le uniquement dans l'IDE sécurisé."
+            if reminder not in guidelines:
+                guidelines.append(reminder)
+            checklist = content.setdefault("checklist", [])
+            if not checklist:
+                checklist.extend([
+                    "IDE sécurisé lancé",
+                    "Commandes de test exécutées",
+                    "Sauvegarde locale effectuée",
+                ])
+            return content
+
+        command_library = {
+            "python": ["python --version", "pip --version"],
+            "javascript": ["node --version", "npm --version"],
+            "typescript": ["npx tsc --version"],
+            "sql": ["psql --version"],
+            "java": ["java --version"],
+            "go": ["go version"],
+            "rust": ["rustc --version"],
+        }
+        commands = command_library.get(language, ["echo 'Sandbox opérationnelle'"])
+
+        return {
+            "title": f"Espace de pratique sécurisé — {molecule.title}",
+            "language": language,
+            "difficulty": target_difficulty,
+            "progression_stage": stage,
+            "workspace": {
+                "recommended_mode": "terminal+éditeur intégré",
+                "setup_steps": [
+                    "Lance le terminal sécurisé depuis l'interface d'apprentissage.",
+                    "Vérifie que l'environnement isolé est bien chargé avant d'écrire du code.",
+                    "Teste le fonctionnement avec une commande simple avant de commencer le projet.",
+                ],
+                "commands_to_try": commands,
+            },
+            "security": {
+                "code_submission_allowed": False,
+                "sandbox_mode": "client_isolated",
+                "safe_usage_guidelines": [
+                    "Le code s'exécute uniquement dans un bac à sable local et temporaire.",
+                    "Ne partage ni ton code ni tes fichiers via le chat ou des formulaires.",
+                    "Réinitialise l'environnement à la fin de la session ou en cas de doute.",
+                ],
+            },
+            "checklist": [
+                "Sandbox démarrée",
+                "Commandes de vérification exécutées",
+                "Notes de session sauvegardées localement",
+            ],
+        }
+
+    def _create_code_project_brief_content(self, molecule: Molecule, context_atoms: list[Atom], difficulty: Optional[str]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        language = self._language_from_capsule()
+        stage = self.compute_progression_stage(molecule)
+        target_difficulty = difficulty or stage.get("difficulty")
+
+        content = ai_service.generate_code_project_brief(
+            lesson_text=lesson_text,
+            lesson_title=molecule.title,
+            language=language,
+            stage=stage,
+            model_choice="gpt-5-mini-2025-08-07",
+        )
+
+        if content:
+            content.setdefault("title", f"Projet de validation — {molecule.title}")
+            content.setdefault("language", language)
+            content.setdefault("difficulty", target_difficulty)
+            content.setdefault("progression_stage", stage)
+            security = content.setdefault("security", {})
+            security.setdefault("code_submission_allowed", False)
+            security.setdefault("reminders", [
+                "Ne partage pas ton code dans le chat : valide-le dans le bac à sable sécurisé.",
+                "Conserve une copie locale de ton travail plutôt que de l'uploader.",
+            ])
+            return content
+
+        fallback_objectives = [
+            "Appliquer le concept central de la leçon dans un cas réel.",
+            "Structurer ton code avec des fonctions/classe clairement identifiées.",
+            "Rédiger une courte documentation d'exécution.",
+        ]
+        fallback_milestones = [
+            {
+                "label": "Conception",
+                "steps": [
+                    "Liste les fonctionnalités indispensables et optionnelles.",
+                    "Définis les entrées/sorties de chaque fonction principale.",
+                ],
+            },
+            {
+                "label": "Implémentation",
+                "steps": [
+                    "Code la solution dans l'IDE sécurisé.",
+                    "Ajoute des tests ou commandes de vérification automatiques.",
+                ],
+            },
+            {
+                "label": "Vérifications finales",
+                "steps": [
+                    "Relis ton code et élimine les répétitions inutiles.",
+                    "Documente comment lancer ton projet depuis le terminal intégré.",
+                ],
+            },
+        ]
+
+        return {
+            "title": f"Projet de validation — {molecule.title}",
+            "summary": "Réalise un mini-projet pour valider les acquis de cette leçon.",
+            "language": language,
+            "difficulty": target_difficulty,
+            "progression_stage": stage,
+            "objectives": fallback_objectives,
+            "milestones": fallback_milestones,
+            "deliverables": [
+                "Code fonctionnel dans la sandbox sécurisée.",
+                "README ou notes expliquant l'exécution et les tests.",
+                "Synthèse de trois points d'amélioration envisagés.",
+            ],
+            "validation": {
+                "self_checklist": [
+                    "Toutes les commandes de test passent dans l'environnement sécurisé.",
+                    "Le code respecte les conventions du langage utilisé.",
+                    "La documentation décrit clairement comment lancer et vérifier le projet.",
+                ],
+                "suggested_tests": [
+                    "Tester différents cas limites dans la sandbox.",
+                    "Expliquer la solution à voix haute ou à un pair pour valider la compréhension.",
+                ],
+            },
+            "security": {
+                "code_submission_allowed": False,
+                "reminders": [
+                    "Garde ton code et tes fichiers dans l'IDE sécurisé, ne les colle pas dans le chat.",
+                    "Réinitialise la sandbox après usage et supprime les fichiers sensibles.",
+                ],
+            },
+            "extension_ideas": [
+                "Ajoute une fonctionnalité bonus pour aller plus loin.",
+                "Prépare une suite de tests automatisés supplémentaires.",
+            ],
         }

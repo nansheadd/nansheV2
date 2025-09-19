@@ -596,6 +596,123 @@ LEÇON:
         return None
 
 
+def generate_code_sandbox_setup(
+    lesson_title: str,
+    language: str,
+    stage: Dict[str, Any],
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info(f"IA Service: génération des consignes sandbox pour '{lesson_title}'")
+    stage_json = json.dumps(stage, ensure_ascii=False)
+    system_prompt = f"""
+Tu es architecte d'environnements pédagogiques sécurisés.
+Prépare une fiche d'onboarding pour un IDE/terminal côté client.
+
+[Contexte de progression]
+{stage_json}
+
+[Contraintes]
+- Rappelle que le code s'exécute uniquement dans un bac à sable isolé côté apprenant.
+- Interdis explicitement l'envoi ou le collage de code dans la plateforme.
+- Fournis 3 étapes de mise en route et 2 à 3 commandes de test adaptées au langage {language}.
+- Ajoute un bloc "security" avec le champ booléen "code_submission_allowed": false.
+- Ajoute un champ "checklist" avec 3 validations rapides avant de commencer le projet.
+- Insère l'objet ci-dessus EXACTEMENT dans "progression_stage": {stage_json}
+- Réponds avec un UNIQUE objet JSON conforme.
+
+Format JSON attendu :
+{{
+  "title": "...",
+  "language": "{language}",
+  "difficulty": "...",
+  "progression_stage": {stage_json},
+  "workspace": {{
+    "recommended_mode": "terminal+éditeur intégré",
+    "setup_steps": ["..."],
+    "commands_to_try": ["..."]
+  }},
+  "security": {{
+    "code_submission_allowed": false,
+    "sandbox_mode": "client_isolated",
+    "safe_usage_guidelines": ["..."]
+  }},
+  "checklist": ["..."]
+}}
+"""
+    user_prompt = f"Prépare les instructions d'ouverture du bac à sable pour la leçon '{lesson_title}'."
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error(f"Erreur de génération de sandbox pour '{lesson_title}': {exc}")
+        return None
+
+
+def generate_code_project_brief(
+    lesson_text: str,
+    lesson_title: str,
+    language: str,
+    stage: Dict[str, Any],
+    model_choice: str,
+) -> Dict[str, Any]:
+    logger.info(f"IA Service: génération de projet de validation pour '{lesson_title}'")
+    stage_json = json.dumps(stage, ensure_ascii=False)
+    system_prompt = f"""
+Tu es mentor senior de programmation.
+À partir de la leçon et du contexte ci-dessous, conçois un mini-projet progressif.
+
+Leçon :
+{lesson_text}
+
+Progression :
+{stage_json}
+
+[Contraintes]
+- Le projet doit correspondre à la progression indiquée.
+- Fournis un résumé, 3 objectifs pédagogiques, des jalons ("milestones") avec étapes concrètes.
+- Ajoute un bloc "deliverables" listant les livrables attendus.
+- Ajoute un bloc "validation" avec "self_checklist" et "suggested_tests".
+- Ajoute une section "security" rappelant de ne jamais envoyer son code ("code_submission_allowed": false).
+- Propose 1 à 2 "extension_ideas" optionnelles.
+- Insère l'objet de progression EXACT dans "progression_stage": {stage_json}
+- Réponds avec un SEUL objet JSON.
+
+Structure attendue :
+{{
+  "title": "...",
+  "summary": "...",
+  "language": "{language}",
+  "difficulty": "...",
+  "progression_stage": {stage_json},
+  "objectives": ["..."],
+  "milestones": [{{"label": "...", "steps": ["..."]}}],
+  "deliverables": ["..."],
+  "validation": {{
+    "self_checklist": ["..."],
+    "suggested_tests": ["..."]
+  }},
+  "security": {{
+    "code_submission_allowed": false,
+    "reminders": ["..."]
+  }},
+  "extension_ideas": ["..."]
+}}
+"""
+    user_prompt = f"Crée un projet de validation pour la leçon '{lesson_title}'."
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error(f"Erreur de génération de projet pour '{lesson_title}': {exc}")
+        return None
+
+
 def generate_live_code_session(
     lesson_text: str,
     lesson_title: str,
