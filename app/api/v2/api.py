@@ -12,6 +12,7 @@ from .endpoints import (
     notification_ws,
     programming_router,
     stripe_router,
+    ws_debug,
 )
 
 api_router = APIRouter()
@@ -24,6 +25,7 @@ api_router.include_router(nlp_router.router, prefix="/nlp", tags=["Nlp"])
 api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Capsule"])
 api_router.include_router(notification_router.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_ws.router, tags=["Notifications"])
+api_router.include_router(ws_debug.router,prefix="/ws-test", tags=["WsDebug"])
 api_router.include_router(badge_router.router, prefix="/badges", tags=["Badges"])
 api_router.include_router(programming_router.router, prefix="/programming", tags=["Programming"])
 api_router.include_router(stripe_router.router, prefix="/stripe", tags=["stripe"])

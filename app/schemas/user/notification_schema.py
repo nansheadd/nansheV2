@@ -23,3 +23,5 @@ class NotificationRead(NotificationBase):
 
     class Config:
         from_attributes = True
+
+        
