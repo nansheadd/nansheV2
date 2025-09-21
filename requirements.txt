@@ -101,3 +101,6 @@ uvloop==0.21.0
 watchfiles==1.1.0
 websockets==15.0.1
 WTForms==3.1.2
+pytest==8.3.2
+pytest-asyncio==0.23.7
+ruff==0.6.8

@@ -8,6 +8,8 @@ from app.models.capsule.atom_model import Atom, AtomContentType
 from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from openai import OpenAI
 from app.core.config import settings
+from app.models.user.user_model import User
+from app.services.atom_service import AtomService
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +18,12 @@ class ForeignBuilder(BaseCapsuleBuilder):
     Builder spécialisé pour les langues, implémentant toutes les méthodes requises.
     """
 
-    def __init__(self, db: Session, capsule: Capsule):
+    def __init__(self, db: Session, capsule: Capsule, user: User):
         """
         Constructeur qui accepte db et capsule et les passe au parent.
         """
-        super().__init__(db=db, capsule=capsule)
+        super().__init__(db=db, capsule=capsule, user=user)
+        self.atom_service = AtomService(db=db, user=user, capsule=capsule)
         try:
             self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         except Exception as e:
@@ -80,7 +83,13 @@ class ForeignBuilder(BaseCapsuleBuilder):
         return [{"type": AtomContentType.LESSON}, {"type": AtomContentType.VOCABULARY}, {"type": AtomContentType.QUIZ}]
 
     # === IMPLÉMENTATION OBLIGATOIRE N°2 ===
-    def _build_atom_content(self, atom_type: AtomContentType, molecule: Molecule, context_atoms: List[Atom]) -> Dict[str, Any] | None:
+    def _build_atom_content(
+        self,
+        atom_type: AtomContentType,
+        molecule: Molecule,
+        context_atoms: List[Atom],
+        difficulty: str | None = None,
+    ) -> Dict[str, Any] | None:
         """
         "Usine" de fabrication du contenu pour chaque type d'atome de langue.
         """
@@ -97,8 +106,11 @@ class ForeignBuilder(BaseCapsuleBuilder):
             system_prompt = "Tu es un lexicographe. Génère 10 mots de vocabulaire. Réponds UNIQUEMENT avec un JSON: {\"items\": [{\"word\": \"...\", \"reading\": \"...\", \"meaning\": \"...\"}]}."
             user_prompt = f"Génère le vocabulaire essentiel pour la leçon '{molecule.title}'."
             return self._call_openai_for_json(user_prompt, system_prompt)
-        
-        # Ajoutez ici d'autres `if` pour gérer les autres types d'atomes...
+
+        if self.atom_service:
+            generated = self.atom_service.create_atom_content(atom_type, molecule, context_atoms, difficulty=difficulty)
+            if generated:
+                return generated
 
         logger.warning(f"Aucun fabricant n'est implémenté pour le type d'atome '{atom_type.name}'.")
         return None

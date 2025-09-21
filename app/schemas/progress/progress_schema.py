@@ -1,6 +1,6 @@
 """Schémas Pydantic pour les endpoints de progression capsule-first."""
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 
 class ActivityStartRequest(BaseModel):
@@ -31,3 +31,35 @@ class CapsuleProgressResponse(BaseModel):
     status: str
     capsule_id: int
     xp: int
+
+
+class DomainStudyEntry(BaseModel):
+    domain: str
+    seconds: int
+
+
+class AreaStudyEntry(BaseModel):
+    domain: str
+    area: str
+    seconds: int
+
+
+class CapsuleStudyEntry(BaseModel):
+    capsule_id: int
+    title: str
+    domain: str
+    area: str
+    seconds: int
+
+
+class StudyBreakdown(BaseModel):
+    by_domain: List[DomainStudyEntry] = Field(default_factory=list)
+    by_area: List[AreaStudyEntry] = Field(default_factory=list)
+    by_capsule: List[CapsuleStudyEntry] = Field(default_factory=list)
+
+
+class UserStatsResponse(BaseModel):
+    total_study_time_seconds: int = 0
+    current_streak_days: int = 0
+    total_sessions: int = 0
+    breakdown: StudyBreakdown = Field(default_factory=StudyBreakdown)

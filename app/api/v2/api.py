@@ -15,6 +15,7 @@ from .endpoints import (
     ws_debug,
     auth_email_router,
     resend_webhook_router,
+    legal_router,
 )
 
 api_router = APIRouter()
@@ -33,3 +34,4 @@ api_router.include_router(programming_router.router, prefix="/programming", tags
 api_router.include_router(stripe_router.router, prefix="/stripe", tags=["stripe"])
 api_router.include_router(auth_email_router.router, prefix="/auth", tags=["Auth Email"]) 
 api_router.include_router(resend_webhook_router.router, tags=["Webhooks"]) 
+api_router.include_router(legal_router.router)

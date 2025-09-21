@@ -17,6 +17,13 @@ class AtomRead(BaseModel):
     difficulty: Optional[str] = None
     progress_status: str = "not_started"
     is_locked: bool = False
+    is_bonus: bool = False
+    xp_value: int = 0
+    capsule_id: Optional[int] = None
+    molecule_id: Optional[int] = None
+    user_feedback_rating: Optional[str] = None
+    user_feedback_reason: Optional[str] = None
+    user_feedback_comment: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -30,6 +37,14 @@ class MoleculeRead(BaseModel):
     generation_status: GenerationStatus
     progress_status: str = "not_started"
     is_locked: bool = False
+    xp_total: int = 0
+    xp_earned: int = 0
+    xp_percent: float = 0.0
+    bonus_xp_total: int = 0
+    bonus_xp_earned: int = 0
+    user_feedback_rating: Optional[str] = None
+    user_feedback_reason: Optional[str] = None
+    user_feedback_comment: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -42,6 +57,11 @@ class GranuleRead(BaseModel):
     molecules: List[MoleculeRead] = []
     progress_status: str = "not_started"
     is_locked: bool = False
+    xp_total: int = 0
+    xp_earned: int = 0
+    xp_percent: float = 0.0
+    bonus_xp_total: int = 0
+    bonus_xp_earned: int = 0
 
     class Config:
         from_attributes = True
@@ -69,7 +89,15 @@ class CapsuleRead(BaseModel):
     generation_status: str
     learning_plan_json: Optional[Dict[str, Any]] = None
     granules: List[GranuleRead] = []
-    
+    user_xp: Optional[int] = None
+    user_bonus_xp: Optional[int] = None
+    xp_target: Optional[int] = None
+    xp_percent: float = 0.0
+    xp_remaining: Optional[int] = None
+    bonus_xp_total: Optional[int] = None
+    bonus_xp_earned: Optional[int] = None
+    bonus_xp_remaining: Optional[int] = None
+
     # On peut aussi inclure les granules si nécessaire
     # granules: List[GranuleRead] = []
 
@@ -100,6 +128,7 @@ class CapsuleProgressRead(BaseModel):
     capsule_id: int
     skill_id: int
     xp: int = Field(..., description="Points d'expérience totaux pour cette capsule.")
+    bonus_xp: int = 0
     strength: float
 
     class Config:
@@ -182,8 +211,9 @@ class CapsuleCreateInternal(BaseModel):
     # Par exemple, si `domain`, `area`, `main_skill` sont requis.
     # Pour l'instant, on reste simple.
     description: Optional[str] = None
-    domain: str = "Generic"
-    area: str = "General Knowledge"
-    main_skill: str = "Learning"
-    is_public: bool = False
-    generation_status: str = "PLANNING"
+
+
+class MoleculeBonusRequest(BaseModel):
+    kind: str
+    difficulty: Optional[str] = None
+    title: Optional[str] = None

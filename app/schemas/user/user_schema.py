@@ -3,6 +3,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
 
+# --- import models ---
+from app.models.user.user_model import SubscriptionStatus
 # --- Schéma de Base ---
 # Contient les champs communs partagés par les autres schémas.
 class UserBase(BaseModel):
@@ -30,6 +32,7 @@ class User(UserBase):
     is_active: bool
     is_superuser: bool
     created_at: datetime
+    subscription_status: SubscriptionStatus = SubscriptionStatus.FREE
 
     class Config:
         from_attributes = True # Permet à Pydantic de lire les modèles SQLAlchemy

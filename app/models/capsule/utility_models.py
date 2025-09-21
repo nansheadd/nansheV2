@@ -29,6 +29,7 @@ class UserCapsuleProgress(Base):
     capsule_id: Mapped[int] = mapped_column(Integer, ForeignKey("capsules.id"), index=True)
     skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id"), index=True)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    bonus_xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     strength: Mapped[float] = mapped_column(Float, default=0.0)
     
     capsule: Mapped["Capsule"] = relationship(back_populates="progressions")

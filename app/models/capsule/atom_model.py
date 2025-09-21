@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Integer, String, ForeignKey, JSON, Enum as EnumSQL
+from sqlalchemy import Integer, String, ForeignKey, JSON, Enum as EnumSQL, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Dict, Any, TYPE_CHECKING, Optional
 
@@ -52,6 +52,7 @@ class Atom(Base):
     content: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
     difficulty: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     molecule_id: Mapped[int] = mapped_column(Integer, ForeignKey("molecules.id"))
+    is_bonus: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     
     # --- Relations ---
     molecule: Mapped["Molecule"] = relationship(back_populates="atoms")

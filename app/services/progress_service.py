@@ -1,27 +1,109 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.user.user_model import User  # <-- Import the User model
 from app.models.progress.user_atomic_progress import UserAtomProgress
 
 from app.models.capsule.atom_model import Atom
+from app.models.capsule.capsule_model import Capsule
+from app.models.capsule.molecule_model import Molecule
 from app.crud import badge_crud
-from app.models.progress.user_atomic_progress import UserAtomProgress
 
 logger = logging.getLogger(__name__)
 
-# Le barème d'XP que vous avez fourni. Facile à mettre à jour ici.
-XP_PER_LEVEL = {
-    1: 820, 2: 890, 3: 960, 4: 1030, 5: 1120, 6: 1210, 7: 1300, 8: 1410,
-    9: 1520, 10: 1640, 11: 1770, 12: 1910, 13: 2070, 14: 2230, 15: 2410,
-    16: 2600, 17: 2810, 18: 3040, 19: 3280, 20: 3540, 21: 3830, 22: 4130,
-    23: 4460, 24: 4820, 25: 5200
-}
-
 TOTAL_XP = 60000
+BONUS_XP_PER_MOLECULE = 50
+
+ATOM_XP_WEIGHTS = {
+    "lesson": 4,
+    "quiz": 2,
+    "code_example": 2,
+    "code_challenge": 5,
+    "live_code_executor": 3,
+    "code_sandbox_setup": 1,
+    "code_project_brief": 4,
+    "code_refactor": 3,
+    "exercise": 3,
+    "vocabulary": 2,
+    "grammar": 2,
+    "dialogue": 3,
+    "fill_in_the_blank": 2,
+    "translation": 2,
+    "flashcards": 1,
+    "essay_prompt": 3,
+    "character": 2,
+}
+DEFAULT_ATOM_WEIGHT = 2
+
+
+def _resolve_atom_weight(atom: Atom) -> int:
+    raw = getattr(atom, "content_type", None)
+    key = raw.value if hasattr(raw, "value") else raw
+    return ATOM_XP_WEIGHTS.get(key, DEFAULT_ATOM_WEIGHT)
+
+
+def calculate_capsule_xp_distribution(capsule: Capsule) -> tuple[dict[int, int], dict[int, int]]:
+    """Retourne deux dictionnaires: XP par atome et XP total par molécule."""
+    if not capsule.granules:
+        return {}, {}
+
+    molecules_ordered: list[Molecule] = []
+    for granule in sorted(capsule.granules, key=lambda g: (g.order or 0, g.id)):
+        molecules_ordered.extend(sorted(granule.molecules, key=lambda m: (m.order or 0, m.id)))
+
+    molecule_count = len(molecules_ordered) or 1
+    base_share = TOTAL_XP // molecule_count
+    remainder = TOTAL_XP % molecule_count
+
+    atom_xp: dict[int, int] = {}
+    molecule_totals: dict[int, int] = {}
+
+    for idx, molecule in enumerate(molecules_ordered):
+        atoms = sorted(molecule.atoms, key=lambda a: (a.order or 0, a.id))
+        if not atoms:
+            molecule_totals[molecule.id] = base_share + (1 if idx < remainder else 0)
+            continue
+
+        core_atoms = [atom for atom in atoms if not getattr(atom, "is_bonus", False)]
+        bonus_atoms = [atom for atom in atoms if getattr(atom, "is_bonus", False)]
+
+        molecule_total = 0
+        if core_atoms:
+            molecule_total = base_share + (1 if idx < remainder else 0)
+
+            weights = [_resolve_atom_weight(atom) for atom in core_atoms]
+            total_weight = sum(weights) or len(core_atoms)
+            allocated = 0
+            for atom, weight in zip(core_atoms, weights):
+                xp_value = int(molecule_total * weight / total_weight)
+                atom_xp[atom.id] = xp_value
+                allocated += xp_value
+
+            remaining_core = molecule_total - allocated
+            if remaining_core > 0:
+                for atom in core_atoms:
+                    atom_xp[atom.id] = atom_xp.get(atom.id, 0) + 1
+                    remaining_core -= 1
+                    if remaining_core == 0:
+                        break
+
+        if bonus_atoms:
+            bonus_total = BONUS_XP_PER_MOLECULE
+            if len(bonus_atoms) >= bonus_total:
+                for index, atom in enumerate(bonus_atoms):
+                    atom_xp[atom.id] = 1 if index < bonus_total else 0
+            else:
+                base_bonus = bonus_total // len(bonus_atoms)
+                remainder_bonus = bonus_total % len(bonus_atoms)
+                for index, atom in enumerate(bonus_atoms):
+                    xp_value = base_bonus + (1 if index < remainder_bonus else 0)
+                    atom_xp[atom.id] = xp_value
+
+        molecule_totals[molecule.id] = molecule_total or (base_share + (1 if idx < remainder else 0))
+
+    return atom_xp, molecule_totals
 
 class ProgressService:
     def __init__(self, db: Session, user_id: int):
@@ -29,6 +111,145 @@ class ProgressService:
         self.user_id = user_id
         # Fetch the user and assign it to self.user
         self.user = self.db.query(User).get(self.user_id)
+        self._activity_cache: dict | None = None
+
+    # -----------------------------
+    # Helpers: activity hygiene
+    # -----------------------------
+
+    def _close_stale_activity_logs(self, max_age_minutes: int = 120):
+        """Clôture automatiquement les sessions sans `end_time` trop anciennes."""
+        cutoff = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+        stale_logs = (
+            self.db.query(UserActivityLog)
+            .filter(
+                UserActivityLog.user_id == self.user_id,
+                UserActivityLog.end_time.is_(None),
+                UserActivityLog.start_time <= cutoff,
+            )
+            .all()
+        )
+        if not stale_logs:
+            return
+        for log in stale_logs:
+            log.end_time = log.start_time + timedelta(minutes=max_age_minutes)
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
+    def _normalize_datetime(self, value: datetime | str | None) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                if value.endswith('Z'):
+                    value = value[:-1] + '+00:00'
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        if isinstance(value, datetime):
+            if value.tzinfo is not None:
+                return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value
+        return None
+
+    def _aggregate_activity_logs(self) -> dict:
+        rows = (
+            self.db.query(
+                UserActivityLog.start_time,
+                UserActivityLog.end_time,
+                UserActivityLog.capsule_id,
+                Capsule.title,
+                Capsule.domain,
+                Capsule.area,
+            )
+            .outerjoin(Capsule, Capsule.id == UserActivityLog.capsule_id)
+            .filter(UserActivityLog.user_id == self.user_id)
+            .all()
+        )
+
+        total_seconds = 0.0
+        total_sessions = 0
+        domain_totals: dict[str, float] = {}
+        area_totals: dict[tuple[str, str], float] = {}
+        capsule_totals: dict[int | str, dict[str, object]] = {}
+        day_set: set = set()
+
+        now = datetime.utcnow()
+
+        for row in rows:
+            start = self._normalize_datetime(row.start_time)
+            end = self._normalize_datetime(row.end_time) or now
+            if not start or end < start:
+                continue
+
+            seconds = (end - start).total_seconds()
+            if seconds <= 0:
+                continue
+
+            total_seconds += seconds
+            total_sessions += 1
+
+            domain = row.domain or "autres"
+            area = row.area or "général"
+
+            domain_totals[domain] = domain_totals.get(domain, 0.0) + seconds
+            area_totals[(domain, area)] = area_totals.get((domain, area), 0.0) + seconds
+
+            capsule_key = row.capsule_id if row.capsule_id is not None else f"uncategorized-{area}"
+            if capsule_key not in capsule_totals:
+                capsule_totals[capsule_key] = {
+                    "capsule_id": row.capsule_id,
+                    "title": row.title or "Session libre",
+                    "domain": domain,
+                    "area": area,
+                    "seconds": 0,
+                }
+            capsule_totals[capsule_key]["seconds"] += seconds
+
+            current_day = start.date()
+            last_day = end.date()
+            while current_day <= last_day:
+                day_set.add(current_day)
+                current_day += timedelta(days=1)
+
+        domain_breakdown = [
+            {"domain": domain, "seconds": int(seconds)}
+            for domain, seconds in sorted(domain_totals.items(), key=lambda item: item[1], reverse=True)
+        ]
+        area_breakdown = [
+            {"domain": domain, "area": area, "seconds": int(seconds)}
+            for (domain, area), seconds in sorted(area_totals.items(), key=lambda item: item[1], reverse=True)
+        ]
+        capsule_breakdown = [
+            {**entry, "seconds": int(entry["seconds"])}
+            for entry in capsule_totals.values()
+        ]
+        capsule_breakdown.sort(key=lambda item: item["seconds"], reverse=True)
+
+        return {
+            "total_seconds": int(total_seconds),
+            "total_sessions": int(total_sessions),
+            "by_domain": domain_breakdown,
+            "by_area": area_breakdown,
+            "by_capsule": capsule_breakdown,
+            "days": sorted(day_set),
+        }
+
+    def _get_activity_aggregates(self) -> dict:
+        if self._activity_cache is None:
+            self._activity_cache = self._aggregate_activity_logs()
+        return self._activity_cache
+
+    def get_study_breakdown(self) -> dict:
+        aggregates = self._get_activity_aggregates()
+        return {
+            "by_domain": aggregates["by_domain"],
+            "by_area": aggregates["by_area"],
+            "by_capsule": aggregates["by_capsule"],
+            "total_sessions": aggregates["total_sessions"],
+        }
 
     def start_activity(self, capsule_id: int, atom_id: int) -> int:
         """Démarre le suivi d'une activité et retourne l'ID du log."""
@@ -51,61 +272,47 @@ class ProgressService:
 
     def get_user_stats(self):
         """Calcule et retourne les statistiques aggrégées pour l'utilisateur."""
-        study_time_seconds = self._calculate_total_study_time()
-        current_streak = self._calculate_current_streak()
+        self._close_stale_activity_logs()
+        aggregates = self._get_activity_aggregates()
+        study_time_seconds = aggregates["total_seconds"]
+        current_streak = self._calculate_current_streak(aggregates["days"])
+        breakdown = self.get_study_breakdown()
 
         return {
             "total_study_time_seconds": study_time_seconds,
-            "current_streak_days": current_streak
+            "current_streak_days": current_streak,
+            "total_sessions": aggregates["total_sessions"],
+            "breakdown": {
+                "by_domain": breakdown.get("by_domain", []),
+                "by_area": breakdown.get("by_area", []),
+                "by_capsule": breakdown.get("by_capsule", []),
+            },
         }
-    
+
     def _calculate_total_study_time(self) -> int:
-        """
-        Calcule le temps d'étude total en secondes.
-        Utilise EXTRACT(EPOCH FROM ...) pour la compatibilité avec PostgreSQL.
-        """
-        if not self.user:
-            return 0
+        return self._get_activity_aggregates()["total_seconds"]
 
-        # On calcule la différence entre les timestamps en secondes
-        # et on fait la somme de toutes ces durées.
-        duration = func.extract('epoch', UserActivityLog.end_time) - func.extract('epoch', UserActivityLog.start_time)
-        
-        total_seconds = self.db.query(func.sum(duration)).filter(
-            UserActivityLog.user_id == self.user_id, # <-- Use self.user_id directly
-            UserActivityLog.end_time.isnot(None)
-        ).scalar()
-
-        return int(total_seconds) if total_seconds else 0
-    
-    def _calculate_current_streak(self) -> int:
-        """Calcule le nombre de jours consécutifs d'activité."""
-        # Récupère les jours uniques d'activité, sans les heures
-        activity_days_query = self.db.query(
-            cast(UserActivityLog.start_time, Date).label('activity_date')
-        ).filter(UserActivityLog.user_id == self.user_id).distinct().order_by(cast(UserActivityLog.start_time, Date).desc())
-        
-        activity_days = [row.activity_date for row in activity_days_query.all()]
+    def _calculate_current_streak(self, activity_days: list | None = None) -> int:
+        if activity_days is None:
+            activity_days = self._get_activity_aggregates()["days"]
         if not activity_days:
             return 0
 
-        streak = 0
+        day_set = {day for day in activity_days}
         today = datetime.utcnow().date()
-        
-        # Si la dernière activité n'est ni aujourd'hui ni hier, le streak est de 0
-        if (today - activity_days[0]).days > 1:
+
+        if today in day_set:
+            current_day = today
+        elif (today - timedelta(days=1)) in day_set:
+            current_day = today - timedelta(days=1)
+        else:
             return 0
-            
-        # On compte les jours consécutifs en partant d'aujourd'hui
-        expected_day = today if activity_days[0] == today else today - timedelta(days=1)
-        
-        for day in activity_days:
-            if day == expected_day:
-                streak += 1
-                expected_day -= timedelta(days=1)
-            else:
-                break
-                
+
+        streak = 0
+        while current_day in day_set:
+            streak += 1
+            current_day -= timedelta(days=1)
+
         return streak
     
     def record_atom_completion(self, atom_id: int) -> UserCapsuleProgress:
@@ -141,18 +348,32 @@ class ProgressService:
             atom_progress = UserAtomProgress(user_id=self.user_id, atom_id=atom_id)
             self.db.add(atom_progress)
 
+        if progress.xp is None:
+            progress.xp = 0
+
         if not atom_progress.xp_awarded:
-            xp_to_award = self._calculate_xp_for_atom(granule.order, len(molecule.atoms))
-            progress.xp = (progress.xp or 0) + xp_to_award
+            xp_to_award = self._calculate_xp_for_atom(capsule, molecule, atom)
+            xp_delta = 0
+
+            if getattr(atom, "is_bonus", False):
+                progress.bonus_xp = (progress.bonus_xp or 0) + xp_to_award
+                xp_delta = xp_to_award
+            else:
+                remaining = max(0, TOTAL_XP - (progress.xp or 0))
+                xp_delta = min(xp_to_award, remaining)
+                progress.xp = (progress.xp or 0) + xp_delta
+
             atom_progress.xp_awarded = True
             atom_progress.completed_at = datetime.utcnow()
             atom_progress.status = 'completed'
             self.db.commit()
             self.db.refresh(progress)
             logger.info(
-                "--- [PROGRESS] +%s XP accordés. Total pour la capsule: %s XP ---",
-                xp_to_award,
+                "--- [PROGRESS] +%s XP accordés (%s). Total noyau: %s | Bonus: %s ---",
+                xp_delta,
+                "bonus" if getattr(atom, "is_bonus", False) else "noyau",
                 progress.xp,
+                getattr(progress, "bonus_xp", 0),
             )
             # Badges liés à la complétion
             try:
@@ -181,13 +402,6 @@ class ProgressService:
 
         return progress
 
-    def _calculate_xp_for_atom(self, level_order: int, num_atoms_in_molecule: int) -> int:
-        """
-        Calcule la valeur en XP d'un atome en divisant l'XP du niveau par le nombre d'atomes.
-        """
-        total_xp_for_level = XP_PER_LEVEL.get(level_order, 0)
-        if num_atoms_in_molecule == 0:
-            return 0
-        
-        # On arrondit à l'entier le plus proche
-        return round(total_xp_for_level / num_atoms_in_molecule)
+    def _calculate_xp_for_atom(self, capsule: Capsule, molecule: Molecule, atom: Atom) -> int:
+        atom_xp_map, _ = calculate_capsule_xp_distribution(capsule)
+        return atom_xp_map.get(atom.id, 0)

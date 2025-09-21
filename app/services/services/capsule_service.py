@@ -5,10 +5,10 @@ from typing import Dict, List, Optional
 
 from fastapi import BackgroundTasks, HTTPException
 from openai import OpenAI
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.analytics.vector_store_model import VectorStore
-from app.models.capsule.atom_model import Atom
+from app.models.capsule.atom_model import Atom, AtomContentType
 from app.models.capsule.capsule_model import Capsule, GenerationStatus
 from app.models.capsule.granule_model import Granule
 from app.models.capsule.language_roadmap_model import (
@@ -18,11 +18,11 @@ from app.models.capsule.language_roadmap_model import (
     LevelFocus,
 )
 from app.models.capsule.molecule_model import Molecule
-from app.models.capsule.utility_models import UserCapsuleEnrollment
+from app.models.capsule.utility_models import UserCapsuleEnrollment, UserCapsuleProgress
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.user.notification_model import NotificationCategory
-from app.models.user.user_model import User
+from app.models.user.user_model import User, SubscriptionStatus
 from app.crud import notification_crud
 from app.schemas.user import notification_schema
 from app.services.rag_utils import get_embedding
@@ -30,9 +30,11 @@ from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
 from app.services.services.capsules.others.default_builder import DefaultBuilder
 from app.services.services.capsules.programming import ProgrammingBuilder
+from app.services.progress_service import TOTAL_XP, BONUS_XP_PER_MOLECULE, calculate_capsule_xp_distribution
 from app.crud import badge_crud
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.models.analytics.feedback_model import ContentFeedback
 
 
 # --- Configuration ---
@@ -86,6 +88,7 @@ class CapsuleService:
         self._progress_cache: Dict[int, UserAtomProgress] | None = None
         self._progress_cache_capsule_id: Optional[int] = None
         self._is_superuser = bool(getattr(user, "is_superuser", False))
+        self._is_premium = getattr(user, "subscription_status", SubscriptionStatus.FREE) == SubscriptionStatus.PREMIUM
 
     # ------------------------------------------------------------------
     # Helpers de progression
@@ -113,11 +116,12 @@ class CapsuleService:
         return progress_map
 
     def _is_molecule_completed(self, molecule: Molecule, progress_map: Optional[Dict[int, UserAtomProgress]] = None) -> bool:
-        if not molecule.atoms:
-            return False
+        core_atoms = [atom for atom in molecule.atoms if not getattr(atom, 'is_bonus', False)]
+        if not core_atoms:
+            return True
         if progress_map is None:
-            progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in molecule.atoms])
-        for atom in molecule.atoms:
+            progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in core_atoms])
+        for atom in core_atoms:
             progress = progress_map.get(atom.id)
             if not progress or progress.status != 'completed':
                 return False
@@ -135,6 +139,8 @@ class CapsuleService:
         has_attempt = False
         has_failure = False
         for atom in molecule.atoms:
+            if getattr(atom, 'is_bonus', False):
+                continue
             progress = progress_map.get(atom.id)
             if progress:
                 if progress.status == 'failed':
@@ -194,25 +200,65 @@ class CapsuleService:
     def _annotate_atoms_with_progress(self, atoms: List[Atom]) -> List[Atom]:
         atoms_sorted = sorted(atoms, key=lambda a: a.order)
         progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in atoms_sorted])
-        previous_completed = True
         for atom in atoms_sorted:
             progress = progress_map.get(atom.id)
             progress_status = progress.status if progress else 'not_started'
             setattr(atom, 'progress_status', progress_status)
-            if self._is_superuser:
-                setattr(atom, 'is_locked', False)
-            else:
-                setattr(atom, 'is_locked', not previous_completed)
-            if progress and progress.status == 'completed':
-                previous_completed = previous_completed and True
-            else:
-                previous_completed = False
+            setattr(atom, 'is_bonus', bool(getattr(atom, 'is_bonus', False)))
+            setattr(atom, 'is_locked', False)
         return atoms_sorted
 
     def annotate_capsule(self, capsule: Capsule) -> Capsule:
         progress_map = self._get_progress_map_for_capsule(capsule)
+        atom_xp_map, molecule_xp_totals = calculate_capsule_xp_distribution(capsule)
+        molecule_ids: list[int] = []
+        atom_ids: list[int] = list(atom_xp_map.keys())
+        seen_atom_ids = set(atom_ids)
+        for granule in capsule.granules:
+            for molecule in granule.molecules:
+                molecule_ids.append(molecule.id)
+                for atom in molecule.atoms:
+                    if atom.id not in seen_atom_ids:
+                        atom_ids.append(atom.id)
+                        seen_atom_ids.add(atom.id)
+
+        feedback_entries: list[ContentFeedback] = []
+        if molecule_ids or atom_ids:
+            target_ids = molecule_ids + atom_ids
+            feedback_entries = (
+                self.db.query(ContentFeedback)
+                .options(selectinload(ContentFeedback.detail))
+                .filter(
+                    ContentFeedback.user_id == self.user.id,
+                    ContentFeedback.content_type.in_(["molecule", "atom"]),
+                    ContentFeedback.content_id.in_(target_ids),
+                )
+                .all()
+            )
+        molecule_feedback_map = {
+            fb.content_id: fb for fb in feedback_entries if fb.content_type == "molecule"
+        }
+        atom_feedback_map = {
+            fb.content_id: fb for fb in feedback_entries if fb.content_type == "atom"
+        }
+        capsule_progress = (
+            self.db.query(UserCapsuleProgress)
+            .filter(
+                UserCapsuleProgress.user_id == self.user.id,
+                UserCapsuleProgress.capsule_id == capsule.id,
+            )
+            .first()
+        )
+        capsule_xp = capsule_progress.xp if capsule_progress and capsule_progress.xp else 0
+        capsule_bonus_xp = capsule_progress.bonus_xp if capsule_progress and capsule_progress.bonus_xp else 0
+        setattr(capsule, "user_xp", capsule_xp)
+        setattr(capsule, "user_bonus_xp", capsule_bonus_xp)
+        setattr(capsule, "xp_target", TOTAL_XP)
+        setattr(capsule, "xp_remaining", max(0, TOTAL_XP - capsule_xp))
         completed_granules: Dict[int, bool] = {}
         granules_sorted = sorted(capsule.granules, key=lambda g: g.order)
+        capsule_bonus_total = 0
+        capsule_bonus_earned = 0
         for granule in granules_sorted:
             prev_granule_completed = completed_granules.get(granule.order - 1, granule.order == 1)
             granule_locked = (granule.order > 1 and not prev_granule_completed) and not self._is_superuser
@@ -220,13 +266,65 @@ class CapsuleService:
             molecules_sorted = sorted(granule.molecules, key=lambda m: m.order)
             prev_molecule_completed = prev_granule_completed
             molecule_statuses = []
+            granule_xp_total = 0
+            granule_xp_earned = 0
+            granule_bonus_total = 0
+            granule_bonus_earned = 0
             for molecule in molecules_sorted:
                 completed = self._is_molecule_completed(molecule, progress_map)
                 status = self._compute_molecule_progress_status(molecule, progress_map)
                 is_locked = (granule_locked or (molecule.order > 1 and not prev_molecule_completed)) and not self._is_superuser
                 setattr(molecule, 'is_locked', is_locked)
                 setattr(molecule, 'progress_status', status)
+                feedback_entry = molecule_feedback_map.get(molecule.id)
+                if feedback_entry:
+                    detail = feedback_entry.detail
+                    setattr(molecule, 'user_feedback_rating', feedback_entry.rating)
+                    setattr(molecule, 'user_feedback_reason', detail.reason_code if detail else None)
+                    setattr(molecule, 'user_feedback_comment', detail.comment if detail else None)
+                else:
+                    setattr(molecule, 'user_feedback_rating', None)
+                    setattr(molecule, 'user_feedback_reason', None)
+                    setattr(molecule, 'user_feedback_comment', None)
                 molecule_statuses.append(status)
+                molecule_total_xp = molecule_xp_totals.get(molecule.id, 0)
+                molecule_earned_xp = 0
+                molecule_bonus_total = 0
+                molecule_bonus_earned = 0
+                for atom in molecule.atoms:
+                    atom_xp = atom_xp_map.get(atom.id, 0)
+                    setattr(atom, 'xp_value', atom_xp)
+                    setattr(atom, 'capsule_id', capsule.id)
+                    setattr(atom, 'molecule_id', molecule.id)
+                    atom_progress_entry = progress_map.get(atom.id)
+                    if getattr(atom, 'is_bonus', False):
+                        molecule_bonus_total += atom_xp
+                        if atom_progress_entry and atom_progress_entry.xp_awarded:
+                            molecule_bonus_earned += atom_xp
+                    else:
+                        if atom_progress_entry and atom_progress_entry.xp_awarded:
+                            molecule_earned_xp += atom_xp
+                    atom_feedback_entry = atom_feedback_map.get(atom.id)
+                    if atom_feedback_entry:
+                        atom_detail = atom_feedback_entry.detail
+                        setattr(atom, 'user_feedback_rating', atom_feedback_entry.rating)
+                        setattr(atom, 'user_feedback_reason', atom_detail.reason_code if atom_detail else None)
+                        setattr(atom, 'user_feedback_comment', atom_detail.comment if atom_detail else None)
+                    else:
+                        setattr(atom, 'user_feedback_rating', None)
+                        setattr(atom, 'user_feedback_reason', None)
+                        setattr(atom, 'user_feedback_comment', None)
+                setattr(molecule, 'xp_total', molecule_total_xp)
+                setattr(molecule, 'xp_earned', molecule_earned_xp)
+                setattr(molecule, 'xp_percent', min(1.0, molecule_earned_xp / molecule_total_xp) if molecule_total_xp else 0.0)
+                setattr(molecule, 'bonus_xp_total', molecule_bonus_total)
+                setattr(molecule, 'bonus_xp_earned', molecule_bonus_earned)
+                granule_xp_total += molecule_total_xp
+                granule_xp_earned += molecule_earned_xp
+                granule_bonus_total += molecule_bonus_total
+                granule_bonus_earned += molecule_bonus_earned
+                capsule_bonus_total += molecule_bonus_total
+                capsule_bonus_earned += molecule_bonus_earned
                 prev_molecule_completed = completed
             granule_completed = all(self._is_molecule_completed(m, progress_map) for m in molecules_sorted) if molecules_sorted else False
             completed_granules[granule.order] = granule_completed
@@ -237,6 +335,16 @@ class CapsuleService:
             else:
                 progress_state = 'not_started'
             setattr(granule, 'progress_status', progress_state)
+            setattr(granule, 'xp_total', granule_xp_total)
+            setattr(granule, 'xp_earned', granule_xp_earned)
+            setattr(granule, 'xp_percent', min(1.0, granule_xp_earned / granule_xp_total) if granule_xp_total else 0.0)
+            setattr(granule, 'bonus_xp_total', granule_bonus_total)
+            setattr(granule, 'bonus_xp_earned', granule_bonus_earned)
+
+        setattr(capsule, 'bonus_xp_total', capsule_bonus_total)
+        setattr(capsule, 'bonus_xp_earned', capsule_bonus_earned)
+        setattr(capsule, 'bonus_xp_remaining', max(0, capsule_bonus_total - capsule_bonus_earned))
+        setattr(capsule, 'xp_percent', min(1.0, capsule_xp / TOTAL_XP) if TOTAL_XP else 0.0)
         return capsule
 
     def completion_snapshot(self, molecule: Molecule) -> Dict[str, bool | str]:
@@ -284,6 +392,46 @@ class CapsuleService:
             )
         except Exception as exc:  # ne jamais bloquer la génération pour un souci de notif
             logger.error("[NOTIFY] Échec de création de notification: %s", exc, exc_info=True)
+            try:
+                self.db.rollback()
+            except Exception:  # defensive: rollback could fail if connection closed
+                pass
+
+    def _notify_enrolled_users(
+        self,
+        capsule: Capsule,
+        *,
+        title: str,
+        message: str,
+        link: Optional[str] = None,
+        exclude_user_ids: Optional[set[int]] = None,
+    ):
+        """Diffuse une notification à tous les inscrits d'une capsule."""
+        try:
+            enrollments = (
+                self.db.query(UserCapsuleEnrollment)
+                .filter(UserCapsuleEnrollment.capsule_id == capsule.id)
+                .all()
+            )
+            for enrollment in enrollments:
+                if exclude_user_ids and enrollment.user_id in exclude_user_ids:
+                    continue
+                notification_crud.create_notification(
+                    self.db,
+                    notification_schema.NotificationCreate(
+                        user_id=enrollment.user_id,
+                        title=title,
+                        message=message,
+                        category=NotificationCategory.CAPSULE,
+                        link=link,
+                    ),
+                )
+        except Exception as exc:
+            logger.error("[NOTIFY] Diffusion bonus échouée: %s", exc, exc_info=True)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
     def create_capsule(self, background_tasks: BackgroundTasks, classification_result: dict) -> Capsule:
         logger.info("\n--- [SERVICE] Début du processus de création de capsule ---")
@@ -542,19 +690,44 @@ class CapsuleService:
 
         self._ensure_molecule_unlocked(molecule)
 
+        capsule = molecule.granule.capsule
+        builder = _get_builder_for_capsule(self.db, capsule, self.user)
+
         # 1. Vérifier si les atomes existent déjà (cache BDD)
         if molecule.atoms:
-            logger.info(f"--- [SERVICE] Atomes trouvés en BDD pour la molécule '{molecule.title}'. Retour direct.")
-            atoms_existing = sorted(molecule.atoms, key=lambda a: a.order)
-            return self._annotate_atoms_with_progress(atoms_existing)
+            logger.info(f"--- [SERVICE] Atomes trouvés en BDD pour la molécule '{molecule.title}'. Vérification des contenus manquants. ---")
+            existing_atoms = sorted(molecule.atoms, key=lambda a: a.order)
+            existing_types = {atom.content_type for atom in existing_atoms}
+            expected_types = [item["type"] for item in builder._get_molecule_recipe(molecule)]
+            missing_types = [atom_type for atom_type in expected_types if atom_type not in existing_types]
+
+            if missing_types:
+                logger.info(
+                    "--- [SERVICE] Types d'atomes manquants détectés (%s). Lancement d'une complétion. ---",
+                    ", ".join(t.value for t in missing_types),
+                )
+                try:
+                    builder.build_molecule_content(molecule)
+                    self.db.commit()
+                except Exception as exc:
+                    logger.error(
+                        "Echec lors de la complétion d'atomes pour la molécule %s : %s",
+                        molecule.id,
+                        exc,
+                        exc_info=True,
+                    )
+                    raise
+                existing_atoms = sorted(molecule.atoms, key=lambda a: a.order)
+
+            annotated_atoms = self._annotate_atoms_with_progress(existing_atoms)
+            atom_xp_map, _ = calculate_capsule_xp_distribution(capsule)
+            for atom in annotated_atoms:
+                setattr(atom, 'xp_value', atom_xp_map.get(atom.id, 0))
+            return annotated_atoms
 
         # 2. Si non, on les génère
         logger.info(f"--- [SERVICE] Aucun atome trouvé. Lancement de la génération pour '{molecule.title}'.")
-        capsule = molecule.granule.capsule
 
-        # On utilise votre dispatcher existant pour obtenir le bon builder
-        builder = _get_builder_for_capsule(self.db, capsule, self.user)
-        
         if getattr(molecule, "generation_status", None) == GenerationStatus.PENDING:
             logger.info("--- [SERVICE] Génération déjà en cours pour cette molécule. ---")
             raise HTTPException(status_code=202, detail="generation_in_progress")
@@ -583,8 +756,99 @@ class CapsuleService:
             )
 
         atoms_sorted = sorted(molecule.atoms, key=lambda a: a.order)
-        return self._annotate_atoms_with_progress(atoms_sorted)
-    
+        annotated_atoms = self._annotate_atoms_with_progress(atoms_sorted)
+        atom_xp_map, _ = calculate_capsule_xp_distribution(capsule)
+        for atom in annotated_atoms:
+            setattr(atom, 'xp_value', atom_xp_map.get(atom.id, 0))
+            setattr(atom, 'capsule_id', capsule.id)
+            setattr(atom, 'molecule_id', molecule.id)
+        return annotated_atoms
+
+    def generate_bonus_atom(
+        self,
+        molecule_id: int,
+        *,
+        kind: str,
+        difficulty: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> List[Atom]:
+        molecule = self.db.query(Molecule).get(molecule_id)
+        if not molecule:
+            raise HTTPException(status_code=404, detail="molecule_not_found")
+
+        if not (self._is_superuser or self._is_premium):
+            raise HTTPException(status_code=403, detail="premium_required")
+
+        self._ensure_molecule_unlocked(molecule)
+
+        capsule = molecule.granule.capsule
+        builder = _get_builder_for_capsule(self.db, capsule, self.user)
+
+        kind_normalized = (kind or "").strip().lower()
+        kind_map = {
+            "lesson": AtomContentType.LESSON,
+            "theory": AtomContentType.LESSON,
+            "exercise": AtomContentType.QUIZ,
+            "quiz": AtomContentType.QUIZ,
+        }
+        content_type = kind_map.get(kind_normalized)
+        if content_type is None:
+            raise HTTPException(status_code=422, detail="invalid_bonus_kind")
+
+        existing_bonus = [
+            atom
+            for atom in molecule.atoms
+            if getattr(atom, "is_bonus", False) and atom.content_type == content_type
+        ]
+        default_title = (
+            f"Bonus théorie #{len(existing_bonus) + 1}" if content_type == AtomContentType.LESSON else f"Bonus exercice #{len(existing_bonus) + 1}"
+        )
+        resolved_title = title.strip() if title else default_title
+        resolved_difficulty = difficulty or ("bonus" if content_type == AtomContentType.QUIZ else None)
+
+        try:
+            builder.create_bonus_atom(
+                molecule=molecule,
+                content_type=content_type,
+                title=resolved_title,
+                difficulty=resolved_difficulty,
+            )
+            molecule.generation_status = GenerationStatus.COMPLETED
+            self.db.commit()
+        except HTTPException:
+            raise
+        except NotImplementedError as exc:
+            raise HTTPException(status_code=400, detail="bonus_not_supported") from exc
+        except Exception as exc:
+            logger.error("[BONUS] Echec génération bonus: %s", exc, exc_info=True)
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail="bonus_generation_failed") from exc
+
+        # rafraîchir les atomes et le cache progression
+        self._progress_cache = None
+        self._progress_cache_capsule_id = None
+        self.db.refresh(molecule)
+
+        atoms_sorted = sorted(molecule.atoms, key=lambda a: a.order)
+        annotated_atoms = self._annotate_atoms_with_progress(atoms_sorted)
+        atom_xp_map, _ = calculate_capsule_xp_distribution(capsule)
+        for atom in annotated_atoms:
+            setattr(atom, 'xp_value', atom_xp_map.get(atom.id, 0))
+            setattr(atom, 'capsule_id', capsule.id)
+            setattr(atom, 'molecule_id', molecule.id)
+
+        link = f"/capsule/{capsule.domain}/{capsule.area}/{capsule.id}/plan?molecule={molecule.id}"
+        message = f"Une nouvelle ressource bonus est disponible dans '{molecule.title}'."
+        self._notify_enrolled_users(
+            capsule,
+            title="Nouveau contenu bonus",
+            message=message,
+            link=link,
+            exclude_user_ids={self.user.id},
+        )
+
+        return annotated_atoms
+
     def generate_and_save_plan(self, capsule_id: int, user_id: int):
         """
         Tâche de fond qui crée une roadmap personnelle pour un utilisateur en

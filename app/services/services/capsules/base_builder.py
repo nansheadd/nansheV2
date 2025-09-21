@@ -243,45 +243,112 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         """
         Orchestre la création de tous les Atoms pour une Molecule donnée en suivant une recette.
         """
-        if molecule.atoms:
-            logger.info(f"Contenu pour '{molecule.title}' (ID: {molecule.id}) existe déjà. Skip.")
-            return molecule.atoms
-
         recipe = self._get_molecule_recipe(molecule)
         if not recipe:
             logger.warning(f"Aucune recette trouvée pour la molécule '{molecule.title}'.")
             return []
 
         logger.info(f"Construction de '{molecule.title}' avec la recette : {[item['type'].name for item in recipe]}")
-        
-        created_atoms = []
-        for i, atom_info in enumerate(recipe):
-            atom_type = atom_info["type"]
+        existing_atoms = sorted(molecule.atoms, key=lambda a: (a.order or 0, a.id))
+        core_atoms = [atom for atom in existing_atoms if not getattr(atom, "is_bonus", False)]
+        bonus_atoms = [atom for atom in existing_atoms if getattr(atom, "is_bonus", False)]
+
+        atoms_by_type: dict[AtomContentType, list[Atom]] = {}
+        for atom in core_atoms:
+            atoms_by_type.setdefault(atom.content_type, []).append(atom)
+
+        ordered_atoms: list[Atom] = []
+
+        for atom_info in recipe:
+            atom_type: AtomContentType = atom_info["type"]
             atom_title = atom_info.get("title", "...")
-            # --- On récupère la difficulté de la recette ---
-            atom_difficulty = atom_info.get("difficulty") 
+            atom_difficulty = atom_info.get("difficulty")
+
+            reuse_bucket = atoms_by_type.get(atom_type) or []
+            if reuse_bucket:
+                atom = reuse_bucket.pop(0)
+                if atom_difficulty and atom.difficulty != atom_difficulty:
+                    atom.difficulty = atom_difficulty
+                ordered_atoms.append(atom)
+                continue
 
             content = self._build_atom_content(
-                atom_type, 
-                molecule, 
-                created_atoms, 
-                difficulty=atom_difficulty # <-- On la passe à la méthode de construction
+                atom_type,
+                molecule,
+                ordered_atoms,
+                difficulty=atom_difficulty,
             )
-            
+
             if content:
                 new_atom = Atom(
                     title=atom_title,
-                    order=i + 1,
+                    order=len(ordered_atoms) + 1,
                     content_type=atom_type,
                     content=content,
-                    difficulty=atom_difficulty, # <-- On la sauvegarde dans le modèle
-                    molecule_id=molecule.id
+                    difficulty=atom_difficulty,
+                    molecule_id=molecule.id,
                 )
                 self.db.add(new_atom)
-                created_atoms.append(new_atom)
-        
-        self.db.commit()
-        return created_atoms
+                self.db.flush([new_atom])
+                ordered_atoms.append(new_atom)
+
+        for remaining in atoms_by_type.values():
+            ordered_atoms.extend(remaining)
+
+        ordered_atoms.extend(bonus_atoms)
+
+        for index, atom in enumerate(ordered_atoms, start=1):
+            if atom.order != index:
+                atom.order = index
+
+        self.db.flush()
+        return ordered_atoms
+
+    def _resequence_atom_orders(self, molecule: Molecule) -> List[Atom]:
+        atoms = sorted(molecule.atoms, key=lambda a: (a.order or 0, a.id))
+        for index, atom in enumerate(atoms, start=1):
+            if atom.order != index:
+                atom.order = index
+        self.db.flush()
+        return atoms
+
+    def create_bonus_atom(
+        self,
+        molecule: Molecule,
+        *,
+        content_type: AtomContentType,
+        title: str,
+        difficulty: str | None = None,
+    ) -> Atom:
+        atom_service = getattr(self, "atom_service", None)
+        if atom_service is None:
+            raise NotImplementedError("This builder does not support bonus atom generation.")
+
+        existing_atoms = sorted(molecule.atoms, key=lambda a: (a.order or 0, a.id))
+        context_atoms = [atom for atom in existing_atoms if not getattr(atom, "is_bonus", False)]
+        content = atom_service.create_atom_content(
+            atom_type=content_type,
+            molecule=molecule,
+            context_atoms=context_atoms,
+            difficulty=difficulty,
+        )
+        if not content:
+            raise ValueError("bonus_generation_failed")
+
+        next_order = existing_atoms[-1].order + 1 if existing_atoms else 1
+        new_atom = Atom(
+            title=title,
+            order=next_order,
+            content_type=content_type,
+            content=content,
+            difficulty=difficulty,
+            molecule_id=molecule.id,
+            is_bonus=True,
+        )
+        self.db.add(new_atom)
+        self.db.flush([new_atom])
+        self._resequence_atom_orders(molecule)
+        return new_atom
 
     # --- Méthodes Abstraites à implémenter par les builders spécifiques ---
 
@@ -295,7 +362,13 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         pass
 
     @abstractmethod
-    def _build_atom_content(self, atom_type: AtomContentType, molecule: Molecule, context_atoms: List[Atom]) -> Dict[str, Any] | None:
+    def _build_atom_content(
+        self,
+        atom_type: AtomContentType,
+        molecule: Molecule,
+        context_atoms: List[Atom],
+        difficulty: str | None = None,
+    ) -> Dict[str, Any] | None:
         """
         "Fabrique" le contenu JSON pour un type d'atome spécifique.
         'context_atoms' contient les atomes déjà créés pour cette molécule,

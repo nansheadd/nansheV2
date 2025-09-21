@@ -7,7 +7,7 @@ from app.models.email.email_token import EmailToken, EmailTokenPurpose
 #from .resend_client import send_email
 from .provider import send_email
 
-from .templates import render_confirm, render_reset
+from .templates import render_confirm, render_reset, render_report_ack
 
 
 # Helpers TTL
@@ -40,6 +40,14 @@ async def send_reset_email(db: Session, user: User, lang: str = 'fr'):
     reset_url = f"{settings.FRONTEND_BASE_URL}/reset-password?token={et.token}"
     subject, html = render_reset(reset_url, lang)
     return await send_email(user.email, subject, html)
+
+
+async def send_report_ack_email(report_payload: dict, lang: str = 'fr'):
+    subject, html = render_report_ack(report_payload, lang)
+    recipient = report_payload.get('email')
+    if not recipient:
+        raise ValueError("Report payload missing reporter email")
+    return await send_email(recipient, subject, html)
 
 # Vérifications
 

@@ -38,6 +38,7 @@ from app.models.analytics.golden_examples_model import GoldenExample
 from app.models.analytics.feedback_model import ContentFeedback
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.analytics.ai_token_log_model import AITokenLog
+from app.models.toolbox.molecule_note_model import MoleculeNote
 
 __all__ = (
     "Base",
@@ -68,4 +69,5 @@ __all__ = (
     "ContentFeedback",
     "VectorStore",
     "AITokenLog",
+    "MoleculeNote",
 )

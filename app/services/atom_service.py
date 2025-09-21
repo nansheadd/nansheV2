@@ -1,6 +1,7 @@
 # app/services/atom_service.py
 
 import json
+from textwrap import dedent
 from sqlalchemy.orm import Session
 from app.core import ai_service
 from app.models.user.user_model import User
@@ -231,17 +232,18 @@ class AtomService:
             language=language,
             model_choice="gpt-5-mini-2025-08-07",
         )
-        return content or {
-            "title": "Challenge de programmation",
-            "language": language,
-            "description": "",
-            "starter_code": "",
-            "sample_tests": [],
-            "hints": [],
-        }
+        return self._prepare_code_challenge_content(
+            candidate=content,
+            language=language,
+            lesson_title=molecule.title,
+        )
 
     def _create_live_code_executor_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
-        challenge_content = self._create_code_challenge_content(molecule, context_atoms) or {}
+        challenge_atom = next(
+            (atom for atom in context_atoms if atom.content_type == AtomContentType.CODE_CHALLENGE),
+            None,
+        )
+        challenge_content = dict(challenge_atom.content) if challenge_atom else {}
         lesson_text = self._extract_lesson_text(context_atoms)
         language = self._language_from_capsule()
         content = ai_service.generate_live_code_session(
@@ -252,12 +254,32 @@ class AtomService:
             model_choice="gpt-5-mini-2025-08-07",
         )
         if content:
+            content.setdefault("language", language)
+            content.setdefault("starter_code", challenge_content.get("starter_code", ""))
+            content.setdefault("hints", challenge_content.get("hints", []))
+            if not content.get("instructions"):
+                description = challenge_content.get("description") or "Applique le concept de la leçon dans le code ci-dessous."
+                content["instructions"] = (
+                    f"{description}\n\nExécute le code, observe la sortie dans la zone Résultat et ajuste jusqu'à ce qu'elle corresponde aux tests d'exemple."
+                )
             return content
+        fallback_challenge = self._prepare_code_challenge_content(
+            candidate=None,
+            language=language,
+            lesson_title=molecule.title,
+        )
         return {
             "language": language,
-            "instructions": "Utilise l'éditeur pour expérimenter avec le concept étudié.",
-            "starter_code": challenge_content.get("starter_code", ""),
-            "hints": challenge_content.get("hints", []),
+            "instructions": (
+                f"{fallback_challenge['description']}\n\nModifie la fonction fournie, clique sur Exécuter pour vérifier la sortie,"
+                " puis lance le challenge pour valider les tests."
+            ),
+            "starter_code": fallback_challenge.get("starter_code", ""),
+            "hints": fallback_challenge.get("hints", []),
+            "suggested_experiments": [
+                "Teste plusieurs jeux de données pour valider le comportement.",
+                "Ajoute une gestion d'erreurs en cas d'entrée invalide.",
+            ],
         }
 
     def _create_code_sandbox_setup_content(self, molecule: Molecule, difficulty: Optional[str]) -> Dict[str, Any]:
@@ -332,6 +354,280 @@ class AtomService:
                 "Commandes de vérification exécutées",
                 "Notes de session sauvegardées localement",
             ],
+        }
+
+    # ------------------------------------------------------------------
+    # Normalisation & fallbacks pour les challenges de code
+    # ------------------------------------------------------------------
+
+    def _prepare_code_challenge_content(
+        self,
+        candidate: Optional[Dict[str, Any]],
+        language: str,
+        lesson_title: str,
+    ) -> Dict[str, Any]:
+        fallback = self._fallback_code_challenge(language, lesson_title)
+        base = candidate or {}
+
+        normalized = {
+            "title": base.get("title") or fallback["title"],
+            "description": base.get("description") or fallback["description"],
+            "language": language,
+            "starter_code": dedent(base.get("starter_code") or fallback["starter_code"]).strip("\n"),
+            "sample_tests": self._normalize_sample_tests(base.get("sample_tests"), fallback["sample_tests"]),
+            "hints": self._normalize_string_list(base.get("hints"), fallback["hints"]),
+        }
+
+        if not normalized["sample_tests"]:
+            normalized["sample_tests"] = fallback["sample_tests"]
+        if not normalized["hints"]:
+            normalized["hints"] = fallback["hints"]
+
+        return normalized
+
+    def _normalize_sample_tests(
+        self,
+        raw_tests: Any,
+        default: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        if isinstance(raw_tests, dict):
+            if "tests" in raw_tests and isinstance(raw_tests["tests"], list):
+                raw_tests = raw_tests["tests"]
+            elif "samples" in raw_tests and isinstance(raw_tests["samples"], list):
+                raw_tests = raw_tests["samples"]
+            else:
+                raw_tests = list(raw_tests.values())
+
+        normalized: list[dict[str, str]] = []
+        if isinstance(raw_tests, list):
+            for entry in raw_tests:
+                if isinstance(entry, dict):
+                    input_value = entry.get("input") if "input" in entry else entry.get("stdin")
+                    output_value = (
+                        entry.get("output")
+                        if "output" in entry
+                        else entry.get("expected")
+                    )
+                elif isinstance(entry, (tuple, list)) and len(entry) >= 2:
+                    input_value, output_value = entry[0], entry[1]
+                else:
+                    continue
+
+                input_str = self._stringify_test_field(input_value)
+                output_str = self._stringify_test_field(output_value)
+
+                if input_str is None or output_str is None:
+                    continue
+
+                normalized.append({"input": input_str, "output": output_str})
+
+        if normalized:
+            return normalized
+        return [dict(item) for item in default]
+
+    def _normalize_string_list(self, value: Any, default: list[str]) -> list[str]:
+        items: list[str] = []
+        if isinstance(value, list):
+            for entry in value:
+                if entry is None:
+                    continue
+                text = entry if isinstance(entry, str) else str(entry)
+                text = text.strip()
+                if text:
+                    items.append(text)
+        if items:
+            return items
+        return list(default)
+
+    def _stringify_test_field(self, value: Any) -> str | None:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip("\n")
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+
+    def _fallback_code_challenge(self, language: str, lesson_title: str) -> Dict[str, Any]:
+        language = (language or "python").lower()
+        if language != "python":
+            return {
+                "title": f"Mini-projet — {lesson_title}",
+                "description": (
+                    "Propose un petit script dans le langage ciblé pour mettre en pratique la leçon. "
+                    "Concentre-toi sur un exemple concret inspiré du chapitre et prépare un mini-sujet à montrer à ton pair."
+                ),
+                "language": language,
+                "starter_code": "// Début de ton script\n",
+                "sample_tests": [],
+                "hints": [
+                    "Commence par décrire ce que ton programme reçoit et ce qu'il doit retourner.",
+                    "Découpe le problème en fonctions simples et teste-les individuellement.",
+                ],
+            }
+
+        templates = [
+            {
+                "title": "Analyse de séries numériques — {lesson}",
+                "description": (
+                    "Écris un programme qui lit une liste d'entiers depuis l'entrée standard et retourne la somme des "
+                    "nombres pairs. Utilise cette base pour t'assurer que tu maîtrises les boucles et les conditions."
+                ),
+                "starter_code": dedent(
+                    """
+                    from typing import List
+
+                    def solve(numbers: List[int]) -> int:
+                        # Additionne uniquement les nombres pairs
+                        # TODO: implémente la logique ici
+                        return 0
+
+                    def parse_input(raw: str) -> List[int]:
+                        if not raw.strip():
+                            return []
+                        return [int(part) for part in raw.split()]
+
+                    if __name__ == "__main__":
+                        import sys
+
+                        data = parse_input(sys.stdin.read())
+                        print(solve(data))
+                    """
+                ).strip("\n"),
+                "sample_tests": [
+                    {"input": "1 2 3 4 5", "output": "6"},
+                    {"input": "10 11 12", "output": "22"},
+                ],
+                "hints": [
+                    "Commence par transformer la chaîne d'entrée en liste d'entiers.",
+                    "Utilise une compréhension de liste ou une boucle pour filtrer les valeurs paires.",
+                ],
+            },
+            {
+                "title": "Nettoyage de texte — {lesson}",
+                "description": (
+                    "Construit une fonction qui normalise une phrase: suppression des espaces superflus, passage en minuscules, "
+                    "et remplacement des caractères accentués par leur équivalent sans accent. Affiche le résultat final."
+                ),
+                "starter_code": dedent(
+                    """
+                    import sys
+                    import unicodedata
+
+                    def normalize(text: str) -> str:
+                        # Retourne un slug lisible depuis une phrase
+                        # TODO: compléter la fonction
+                        return text
+
+                    if __name__ == "__main__":
+                        raw = sys.stdin.read()
+                        print(normalize(raw))
+                    """
+                ).strip("\n"),
+                "sample_tests": [
+                    {
+                        "input": "Bonjour    Monde!",
+                        "output": "bonjour monde!",
+                    },
+                    {
+                        "input": "Énergie  propre",
+                        "output": "energie propre",
+                    },
+                ],
+                "hints": [
+                    "Utilise `unicodedata.normalize` pour gérer les accents.",
+                    "Pense à la méthode `split()` pour réduire les espaces multiples.",
+                ],
+            },
+            {
+                "title": "Tableau de fréquences — {lesson}",
+                "description": (
+                    "À partir d'un flux JSON contenant des mots, calcule combien de fois chaque mot apparaît et affiche le "
+                    "résultat au format JSON trié par fréquence décroissante."
+                ),
+                "starter_code": dedent(
+                    """
+                    import json
+                    import sys
+                    from collections import Counter
+
+                    def solve(words: list[str]) -> dict[str, int]:
+                        # TODO: implémente la logique de comptage
+                        return {}
+
+                    if __name__ == "__main__":
+                        raw = sys.stdin.read().strip() or "[]"
+                        words = json.loads(raw)
+                        result = solve(words)
+                        print(json.dumps(result, ensure_ascii=False))
+                    """
+                ).strip("\n"),
+                "sample_tests": [
+                    {
+                        "input": "[\"python\", \"ai\", \"python\"]",
+                        "output": "{\"python\": 2, \"ai\": 1}",
+                    },
+                    {
+                        "input": "[\"data\", \"data\", \"lab\"]",
+                        "output": "{\"data\": 2, \"lab\": 1}",
+                    },
+                ],
+                "hints": [
+                    "`collections.Counter` peut t'éviter beaucoup de code.",
+                    "N'oublie pas de convertir le Counter en dictionnaire standard avant l'affichage.",
+                ],
+            },
+            {
+                "title": "Planificateur de tâches — {lesson}",
+                "description": (
+                    "Reçois en entrée un JSON représentant des tâches avec une priorité et une durée. "
+                    "Affiche la durée totale et la prochaine tâche la plus prioritaire."
+                ),
+                "starter_code": dedent(
+                    """
+                    import json
+                    import sys
+
+                    def planify(tasks: list[dict]) -> dict:
+                        # TODO: calcule la durée totale et la tâche prioritaire
+                        return {"total_duration": 0, "next_task": None}
+
+                    if __name__ == "__main__":
+                        raw = sys.stdin.read().strip() or "[]"
+                        tasks = json.loads(raw)
+                        result = planify(tasks)
+                        print(json.dumps(result, ensure_ascii=False))
+                    """
+                ).strip("\n"),
+                "sample_tests": [
+                    {
+                        "input": "[{\"name\": \"setup env\", \"priority\": 2, \"duration\": 15}, {\"name\": \"write tests\", \"priority\": 1, \"duration\": 30}]",
+                        "output": "{\"total_duration\": 45, \"next_task\": \"write tests\"}",
+                    },
+                    {
+                        "input": "[{\"name\": \"refactor\", \"priority\": 3, \"duration\": 40}]",
+                        "output": "{\"total_duration\": 40, \"next_task\": \"refactor\"}",
+                    },
+                ],
+                "hints": [
+                    "Utilise `sorted` avec la clé `priority` pour identifier la tâche urgente.",
+                    "Additionne les durées avec une compréhension ou `sum`.",
+                ],
+            },
+        ]
+
+        index = sum(ord(c) for c in lesson_title.lower()) % len(templates) if lesson_title else 0
+        template = templates[index]
+        return {
+            "title": template["title"].format(lesson=lesson_title),
+            "description": template["description"],
+            "language": "python",
+            "starter_code": template["starter_code"],
+            "sample_tests": template["sample_tests"],
+            "hints": template["hints"],
         }
 
     def _create_code_project_brief_content(self, molecule: Molecule, context_atoms: list[Atom], difficulty: Optional[str]) -> Dict[str, Any]:

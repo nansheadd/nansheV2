@@ -13,6 +13,7 @@ from app.schemas.progress.progress_schema import (
     ActivityStartRequest,
     AnswerLogCreate,
     CapsuleProgressResponse,
+    UserStatsResponse,
 )
 from app.services.progress_service import ProgressService
 from app.models.user.user_model import User
@@ -46,7 +47,7 @@ def end_user_activity(
     return {"status": "success"}
 
 
-@router.get("/stats", response_model=dict, summary="Récupérer les statistiques globales")
+@router.get("/stats", response_model=UserStatsResponse, summary="Récupérer les statistiques globales")
 def get_user_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

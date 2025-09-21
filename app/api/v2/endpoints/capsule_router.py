@@ -188,6 +188,28 @@ def get_atoms_for_molecule(
         
     return atoms
 
+
+@router.post(
+    "/molecules/{molecule_id}/bonus",
+    response_model=List[capsule_schema.AtomRead],
+    status_code=status.HTTP_201_CREATED,
+    summary="Génère un contenu bonus pour une molécule (premium/superuser)"
+)
+def create_bonus_content_for_molecule(
+    molecule_id: int,
+    payload: capsule_schema.MoleculeBonusRequest,
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
+):
+    service = CapsuleService(db=db, user=current_user)
+    atoms = service.generate_bonus_atom(
+        molecule_id,
+        kind=payload.kind,
+        difficulty=payload.difficulty,
+        title=payload.title,
+    )
+    return atoms
+
 def log_all_capsules(db: Session):
     capsules = db.query(capsule_model.Capsule).all()
     for cap in capsules:
@@ -246,7 +268,12 @@ def get_my_capsules(
 ):
     """Récupère la liste des capsules auxquelles l'utilisateur actuel est inscrit."""
     enrollments = db.query(utility_models.UserCapsuleEnrollment).filter(utility_models.UserCapsuleEnrollment.user_id == current_user.id).all()
-    return [enrollment.capsule for enrollment in enrollments]
+    service = CapsuleService(db=db, user=current_user)
+    capsules = []
+    for enrollment in enrollments:
+        capsule = service.annotate_capsule(enrollment.capsule)
+        capsules.append(capsule)
+    return capsules
 
 @router.get("/public", response_model=List[capsule_schema.CapsuleRead], summary="Lister les capsules publiques disponibles")
 def get_public_capsules(

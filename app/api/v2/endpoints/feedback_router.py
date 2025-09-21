@@ -1,16 +1,16 @@
 # app/api/v2/endpoints/feedback_router.py
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
-from app.models.analytics.feedback_model import ContentFeedback
+from app.models.analytics.feedback_model import ContentFeedback, ContentFeedbackDetail
 from app.schemas.analytics import feedback_schema
 
 router = APIRouter()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=feedback_schema.FeedbackOut, status_code=status.HTTP_201_CREATED)
 def submit_feedback(
     feedback_in: feedback_schema.FeedbackIn,
     db: Session = Depends(get_db),
@@ -21,7 +21,7 @@ def submit_feedback(
     On stocke des *strings* pour `rating` et `status` (pas d'Enum Python côté DB).
     Un nouveau vote remet le statut à 'pending'.
     """
-    rating_str = feedback_in.rating  # "liked" | "disliked"
+    rating_str = feedback_in.rating  # "liked" | "disliked" | "none"
 
     fb = (
         db.query(ContentFeedback)
@@ -32,6 +32,17 @@ def submit_feedback(
         )
         .one_or_none()
     )
+
+    if rating_str in (None, "none"):
+        if fb:
+            if fb.detail:
+                db.delete(fb.detail)
+            db.delete(fb)
+            db.commit()
+        return {"id": None, "rating": None, "status": "deleted", "reason_code": None, "comment": None}
+
+    if rating_str not in {"liked", "disliked"}:
+        raise HTTPException(status_code=400, detail="rating_invalid")
 
     if fb:
         fb.rating = rating_str
@@ -45,10 +56,34 @@ def submit_feedback(
             status="pending",
         )
         db.add(fb)
+        db.flush([fb])
+
+    if rating_str == "disliked":
+        if not (feedback_in.reason_code and feedback_in.comment and feedback_in.comment.strip()):
+            raise HTTPException(status_code=400, detail="reason_required")
+        if fb.detail:
+            fb.detail.reason_code = feedback_in.reason_code
+            fb.detail.comment = feedback_in.comment.strip()
+        else:
+            fb.detail = ContentFeedbackDetail(
+                reason_code=feedback_in.reason_code,
+                comment=feedback_in.comment.strip(),
+            )
+    else:
+        if fb.detail:
+            db.delete(fb.detail)
 
     db.commit()
     db.refresh(fb)
-    return {"id": fb.id, "rating": fb.rating, "status": fb.status}
+
+    detail = fb.detail
+    return {
+        "id": fb.id,
+        "rating": fb.rating,
+        "status": fb.status,
+        "reason_code": detail.reason_code if detail else None,
+        "comment": detail.comment if detail else None,
+    }
 
 
 @router.post("/status", response_model=feedback_schema.BulkFeedbackStatusOut)

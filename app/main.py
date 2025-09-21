@@ -18,13 +18,17 @@ from sqladmin.authentication import AuthenticationBackend
 from app.admin import (
     AITokenLogAdmin,
     AtomAdmin,
+    BadgeAdmin,
     CapsuleAdmin,
+    EmailTokenAdmin,
     FeedbackAdmin,
     GranuleAdmin,
     MoleculeAdmin,
+    NotificationAdmin,
     UserActivityLogAdmin,
     UserAdmin,
     UserAnswerLogAdmin,
+    UserBadgeAdmin,
     UserCapsuleEnrollmentAdmin,
     UserCapsuleProgressAdmin,
 )
@@ -94,6 +98,10 @@ admin.add_view(UserActivityLogAdmin)
 admin.add_view(UserAnswerLogAdmin)
 admin.add_view(AITokenLogAdmin)
 admin.add_view(FeedbackAdmin)
+admin.add_view(NotificationAdmin)
+admin.add_view(EmailTokenAdmin)
+admin.add_view(BadgeAdmin)
+admin.add_view(UserBadgeAdmin)
 app.include_router(api_router, prefix="/api/v2")
 
 
