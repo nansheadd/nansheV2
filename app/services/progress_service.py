@@ -114,6 +114,10 @@ class ProgressService:
         self.user = self.db.query(User).get(self.user_id)
         self._activity_cache: dict | None = None
 
+    def _invalidate_activity_cache(self) -> None:
+        """Force le recalcul des agrégats de temps lors du prochain accès."""
+        self._activity_cache = None
+
     # -----------------------------
     # Helpers: activity hygiene
     # -----------------------------
@@ -138,6 +142,8 @@ class ProgressService:
             self.db.commit()
         except Exception:
             self.db.rollback()
+        else:
+            self._invalidate_activity_cache()
 
     def _normalize_datetime(self, value: datetime | str | None) -> datetime | None:
         if value is None:
@@ -314,6 +320,7 @@ class ProgressService:
         self.db.add(new_log)
         self.db.commit()
         self.db.refresh(new_log)
+        self._invalidate_activity_cache()
         return new_log.id
 
     def end_activity(self, log_id: int):
@@ -322,6 +329,7 @@ class ProgressService:
         if log_entry and log_entry.user_id == self.user_id and not log_entry.end_time:
             log_entry.end_time = datetime.utcnow()
             self.db.commit()
+            self._invalidate_activity_cache()
 
     def get_user_stats(self):
         """Calcule et retourne les statistiques aggrégées pour l'utilisateur."""
@@ -421,6 +429,7 @@ class ProgressService:
             atom_progress.status = 'completed'
             self.db.commit()
             self.db.refresh(progress)
+            self._invalidate_activity_cache()
             logger.info(
                 "--- [PROGRESS] +%s XP accordés (%s). Total noyau: %s | Bonus: %s ---",
                 xp_delta,
@@ -452,6 +461,7 @@ class ProgressService:
             if not atom_progress.completed_at:
                 atom_progress.completed_at = datetime.utcnow()
             self.db.commit()
+            self._invalidate_activity_cache()
 
         return progress
 
