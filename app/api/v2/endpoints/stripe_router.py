@@ -1,3 +1,5 @@
+import logging
+
 import stripe
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
@@ -9,6 +11,65 @@ from app.crud import user_crud, badge_crud
 
 router = APIRouter()
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+logger = logging.getLogger(__name__)
+
+PREMIUM_BADGE_SLUG = "premium-subscriber"
+PREMIUM_TITLE = "Membre Premium"
+PREMIUM_BORDER_COLOR = "#FFD700"  # Couleur dorée
+
+
+def _activate_premium_for_user(db: Session, user: User) -> None:
+    """Attribue le statut premium, le titre/bordure et le badge à l'utilisateur."""
+
+    if not user:
+        return
+
+    updated = False
+    if user.subscription_status != SubscriptionStatus.PREMIUM:
+        user.subscription_status = SubscriptionStatus.PREMIUM
+        updated = True
+
+    if user.active_title != PREMIUM_TITLE:
+        user.active_title = PREMIUM_TITLE
+        updated = True
+
+    if user.profile_border_color != PREMIUM_BORDER_COLOR:
+        user.profile_border_color = PREMIUM_BORDER_COLOR
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(user)
+        logger.info("✅ Statut PREMIUM activé pour l'utilisateur %s", user.id)
+
+    try:
+        badge_crud.award_badge(db, user_id=user.id, badge_slug=PREMIUM_BADGE_SLUG)
+    except Exception as exc:  # pragma: no cover - sécurité supplémentaire
+        logger.warning("Impossible d'attribuer le badge premium à l'utilisateur %s: %s", user.id, exc)
+
+
+def _set_subscription_to_canceled(db: Session, user: User) -> None:
+    if not user:
+        return
+
+    updated = False
+    if user.active_title is not None:
+        user.active_title = None
+        updated = True
+
+    if user.profile_border_color is not None:
+        user.profile_border_color = None
+        updated = True
+
+    if user.subscription_status != SubscriptionStatus.CANCELED:
+        user.subscription_status = SubscriptionStatus.CANCELED
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(user)
+        logger.info("❌ Abonnement CANCELED pour l'utilisateur %s", user.id)
 
 @router.post("/create-checkout-session")
 async def create_checkout_session(
@@ -56,37 +117,42 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     except (ValueError, stripe.error.SignatureVerificationError) as e:
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
-    # Gère les différents types d'événements
-    if event['type'] == 'checkout.session.completed':
+    event_type = event.get('type')
+    logger.info("Réception webhook Stripe: %s", event_type)
+
+    if event_type == 'checkout.session.completed':
         session = event['data']['object']
         customer_id = session.get('customer')
-        user = user_crud.get_user_by_stripe_id(db, stripe_id=customer_id)
-        if user:
-            # On met à jour le statut
-            user.subscription_status = SubscriptionStatus.PREMIUM
-            db.commit()
-            print(f"✅ Abonnement PREMIUM activé pour l'utilisateur {user.id}")
+        if customer_id:
+            user = user_crud.get_user_by_stripe_id(db, stripe_id=customer_id)
+            _activate_premium_for_user(db, user)
 
-            # --- AJOUTEZ CES LIGNES POUR ATTRIBUER LE BADGE ---
-            # On attribue le badge, ce qui déclenchera la notification et le toast !
-            badge_crud.award_badge(db, user_id=user.id, badge_slug="premium-subscriber")
-            
-            # On peut aussi définir le titre et la couleur par défaut ici
-            user.active_title = "Membre Premium"
-            user.profile_border_color = "#FFD700" # Une couleur dorée
-            db.commit()
-            print(f"🏆 Badge Premium et titre attribués à l'utilisateur {user.id}")
+    elif event_type in {'invoice.payment_succeeded', 'invoice.paid'}:
+        invoice = event['data']['object']
+        customer_id = invoice.get('customer')
+        if customer_id:
+            user = user_crud.get_user_by_stripe_id(db, stripe_id=customer_id)
+            _activate_premium_for_user(db, user)
 
-
-    elif event['type'] == 'customer.subscription.deleted':
+    elif event_type in {'customer.subscription.created', 'customer.subscription.updated'}:
         subscription = event['data']['object']
         customer_id = subscription.get('customer')
+        if not customer_id:
+            return {"status": "ignored"}
+
         user = user_crud.get_user_by_stripe_id(db, stripe_id=customer_id)
-        if user:
-            user.active_title = None
-            user.profile_border_color = None
-            user.subscription_status = SubscriptionStatus.CANCELED
-            db.commit()
-            print(f"❌ Abonnement CANCELED pour l'utilisateur {user.id}")
+        status = subscription.get('status')
+
+        if status in {'active', 'trialing'}:
+            _activate_premium_for_user(db, user)
+        elif status in {'canceled', 'incomplete_expired', 'unpaid', 'paused'}:
+            _set_subscription_to_canceled(db, user)
+
+    elif event_type == 'customer.subscription.deleted':
+        subscription = event['data']['object']
+        customer_id = subscription.get('customer')
+        if customer_id:
+            user = user_crud.get_user_by_stripe_id(db, stripe_id=customer_id)
+            _set_subscription_to_canceled(db, user)
 
     return {"status": "success"}
