@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.nlp.topic_classifier import TopicClassifier
 
 router = APIRouter(prefix="/nlp", tags=["nlp"])
+if getattr(router, "state", None) is None:
+    router.state = SimpleNamespace()
 logger = logging.getLogger(__name__)
 
 
 @router.on_event("startup")
 def _init_classifier() -> None:
-    if router.state.__dict__.get("classifier"):
+    if getattr(router.state, "classifier", None):
         return
 
     base_path = Path(__file__).resolve().parents[3]
@@ -33,7 +36,7 @@ def _init_classifier() -> None:
 
 
 def get_classifier() -> TopicClassifier:
-    classifier = router.state.__dict__.get("classifier")
+    classifier = getattr(router.state, "classifier", None)
     if not classifier:
         raise HTTPException(status_code=503, detail="Classifier not initialized")
     return classifier
