@@ -2,10 +2,11 @@
 
 import json
 import logging
+
 import requests
 import tiktoken
-import google.generativeai as genai
 from sqlalchemy.orm import Session
+
 from app.models.user.user_model import User
 
 from app.models.analytics.golden_examples_model import GoldenExample
@@ -149,13 +150,16 @@ def _summarize_text_for_prompt(db: Session, user: User, text_to_summarize: str, 
     except Exception as e:
         logger.error(f"Échec de la summarisation avec le prompt {prompt_name}: {e}")
 
-try:
-    genai.configure(api_key=settings.GOOGLE_API_KEY)
-    gemini_model = genai.GenerativeModel("gemini-1.5-pro-latest")
-    logger.info("✅ Service IA Gemini (1.5 Pro) configuré.")
-except Exception as e:
-    gemini_model = None
-    logger.error(f"❌ Erreur de configuration pour Gemini: {e}")
+GEMINI_MODEL = "gemini-1.5-pro-latest"
+GEMINI_API_URL = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+)
+GEMINI_TIMEOUT_SECONDS = 120
+
+if settings.GOOGLE_API_KEY:
+    logger.info("✅ Clé API Gemini détectée – les appels REST seront activés.")
+else:  # pragma: no cover - configuration dépend des secrets
+    logger.warning("⚠️ Aucune clé API Gemini détectée. Les appels Gemini échoueront.")
 
 try:
     openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -165,14 +169,55 @@ except Exception as e:
     logger.error(f"❌ Erreur de configuration pour OpenAI: {e}")
 
 def _call_gemini(prompt: str, temperature: Optional[float] = None) -> str:
-    if not gemini_model: raise ConnectionError("Le modèle Gemini n'est pas disponible.")
+    api_key = settings.GOOGLE_API_KEY
+    if not api_key:
+        raise ConnectionError("Le modèle Gemini n'est pas disponible.")
+
+    payload: Dict[str, Any] = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+        },
+    }
+    if temperature is not None:
+        payload["generationConfig"]["temperature"] = float(temperature)
+
     try:
-        gen_cfg = genai.types.GenerationConfig(response_mime_type="application/json", **({"temperature": temperature} if temperature is not None else {}))
-        response = gemini_model.generate_content(prompt, generation_config=gen_cfg)
-        return response.text
-    except Exception as e:
-        logger.error(f"Erreur lors de l'appel à l'API Gemini : {e}")
+        response = requests.post(
+            GEMINI_API_URL,
+            params={"key": api_key},
+            json=payload,
+            timeout=GEMINI_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:  # pragma: no cover - dépend de l'API externe
+        logger.error("Erreur lors de l'appel à l'API Gemini : %s", exc)
         raise
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        logger.error("Réponse Gemini non valide: %s", exc)
+        raise ValueError("Réponse Gemini non valide") from exc
+
+    try:
+        candidates = data.get("candidates", [])
+        first_candidate = next(
+            candidate for candidate in candidates if candidate.get("content")
+        )
+        parts = first_candidate["content"].get("parts", [])
+        text = "".join(part.get("text", "") for part in parts)
+        if not text.strip():
+            raise ValueError("Réponse Gemini vide")
+        return text
+    except (StopIteration, KeyError, TypeError, ValueError) as exc:
+        logger.error("Structure de réponse Gemini inattendue: %s -- payload=%s", exc, data)
+        raise ValueError("Réponse Gemini invalide") from exc
 
 def _inject_json_guard(system_prompt: str, user_prompt: str) -> str:
     sp = (system_prompt or "").strip()
