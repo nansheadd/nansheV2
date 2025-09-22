@@ -37,8 +37,10 @@ from app.models.progress.user_atomic_progress import (
 from app.models.analytics.golden_examples_model import GoldenExample
 from app.models.analytics.feedback_model import ContentFeedback
 from app.models.analytics.vector_store_model import VectorStore
+from app.models.analytics.classification_feedback_model import ClassificationFeedback
 from app.models.analytics.ai_token_log_model import AITokenLog
 from app.models.toolbox.molecule_note_model import MoleculeNote
+from app.models.toolbox.coach_energy_model import CoachEnergyWallet
 
 __all__ = (
     "Base",
@@ -70,4 +72,6 @@ __all__ = (
     "VectorStore",
     "AITokenLog",
     "MoleculeNote",
+    "ClassificationFeedback",
+    "CoachEnergyWallet",
 )

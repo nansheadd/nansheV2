@@ -1,6 +1,7 @@
 # app/services/atom_service.py
 
 import json
+import logging
 from textwrap import dedent
 from sqlalchemy.orm import Session
 from app.core import ai_service
@@ -10,15 +11,25 @@ from app.models.capsule.molecule_model import Molecule
 from typing import Dict, Any, Optional, List
 from app.models.capsule.atom_model import Atom, AtomContentType
 
+logger = logging.getLogger(__name__)
+
 class AtomService:
     """
     Service dédié à la création et à la gestion des Atomes.
     Contient la logique spécifique pour chaque type d'atome.
     """
-    def __init__(self, db: Session, user: User, capsule: Capsule):
+    def __init__(
+        self,
+        db: Session,
+        user: User,
+        capsule: Capsule,
+        *,
+        source_material: Optional[dict] = None,
+    ):
         self.db = db
         self.user = user
         self.capsule = capsule
+        self.source_material: Dict[str, Any] | None = source_material or None
 
     def create_atom_content(self, atom_type: AtomContentType, molecule: Molecule, context_atoms: list[Atom], difficulty: Optional[str] = None) -> Dict[str, Any] | None:
         """Aiguille vers la bonne méthode de création en fonction du type d'atome."""
@@ -36,6 +47,22 @@ class AtomService:
             return self._create_code_sandbox_setup_content(molecule, difficulty)
         if atom_type == AtomContentType.CODE_PROJECT_BRIEF:
             return self._create_code_project_brief_content(molecule, context_atoms, difficulty)
+        if atom_type == AtomContentType.FILL_IN_THE_BLANK:
+            return self._create_fill_in_blank_content(molecule, context_atoms)
+        if atom_type == AtomContentType.FLASHCARDS:
+            return self._create_flashcards_content(molecule, context_atoms)
+        if atom_type == AtomContentType.SHORT_ANSWER:
+            return self._create_short_answer_content(molecule, context_atoms)
+        if atom_type == AtomContentType.TRUE_FALSE:
+            return self._create_true_false_content(molecule, context_atoms)
+        if atom_type == AtomContentType.MATCHING:
+            return self._create_matching_content(molecule, context_atoms)
+        if atom_type == AtomContentType.ORDERING:
+            return self._create_ordering_content(molecule, context_atoms)
+        if atom_type == AtomContentType.CATEGORIZATION:
+            return self._create_categorization_content(molecule, context_atoms)
+        if atom_type == AtomContentType.DIAGRAM_COMPLETION:
+            return self._create_diagram_completion_content(molecule, context_atoms)
         # Ajoutez d'autres types d'atomes ici à l'avenir
         # if atom_type == AtomContentType.CODE_CHALLENGE:
         #     return self._create_code_challenge_content(molecule)
@@ -69,6 +96,7 @@ class AtomService:
             ]
         }
         plan_context = json.dumps(plan_dict, indent=2, ensure_ascii=False)
+        reference_text = self._build_reference_context(molecule)
         # --- FIN DE LA CORRECTION ---
 
         if self.capsule.domain == 'programming':
@@ -78,6 +106,7 @@ class AtomService:
                 lesson_title=molecule.title,
                 language=language,
                 model_choice="gpt-5-mini-2025-08-07",
+                reference_text=reference_text,
             )
 
         app_rules_context = """
@@ -91,7 +120,8 @@ class AtomService:
             course_plan_context=plan_context,
             app_rules_context=app_rules_context,
             target_lesson_title=molecule.title,
-            model_choice="gpt-5-mini-2025-08-07"
+            model_choice="gpt-5-mini-2025-08-07",
+            reference_text=reference_text,
         )
 
     def _create_quiz_content(self, molecule: Molecule, context_atoms: list[Atom], difficulty: Optional[str]) -> Dict[str, Any] | None:
@@ -110,12 +140,14 @@ class AtomService:
             return None
 
         # --- On appelle la NOUVELLE fonction de l'ai_service ---
+        reference_text = self._build_reference_context(molecule)
         exercise_content = ai_service.generate_contextual_exercises(
             lesson_text=lesson_text,
             lesson_title=molecule.title,
             course_type="generic",
             difficulty=difficulty, # <-- On le passe à l'IA
-            model_choice="gpt-5-mini-2025-08-07"
+            model_choice="gpt-5-mini-2025-08-07",
+            reference_text=reference_text,
         )
         
         # La nouvelle fonction renvoie directement le bon format JSON,
@@ -206,6 +238,62 @@ class AtomService:
             "ratio": ratio if total > 1 else 0.0,
             **stage,
         }
+
+    def _build_reference_context(self, molecule: Molecule) -> Optional[str]:
+        """Construit un contexte textuel basé sur le plan et la ressource fournie."""
+        segments: List[str] = []
+        chapter_meta = self._get_chapter_metadata(molecule)
+        if isinstance(chapter_meta, dict):
+            summary = chapter_meta.get("chapter_summary") or chapter_meta.get("summary")
+            if summary:
+                segments.append(f"Résumé ciblé:\n{summary.strip()}")
+            key_points = chapter_meta.get("key_points") or chapter_meta.get("learning_objectives")
+            if key_points:
+                formatted_points = "\n".join(
+                    f"- {point}" for point in key_points if isinstance(point, str) and point.strip()
+                )
+                if formatted_points:
+                    segments.append(f"Points clés issus du document:\n{formatted_points}")
+            references = chapter_meta.get("source_excerpt") or chapter_meta.get("source_passages")
+            if isinstance(references, list):
+                excerpt_text = "\n".join(filter(None, [ref.strip() for ref in references if isinstance(ref, str)]))
+            elif isinstance(references, str):
+                excerpt_text = references.strip()
+            else:
+                excerpt_text = ""
+            if excerpt_text:
+                segments.append(f"Extraits du support:\n{excerpt_text}")
+
+        source_excerpt = self._get_source_excerpt()
+        if source_excerpt:
+            segments.append(f"Sélection de passages bruts:\n{source_excerpt}")
+
+        if not segments:
+            return None
+        return "\n\n".join(segments)
+
+    def _get_chapter_metadata(self, molecule: Molecule) -> Optional[Dict[str, Any]]:
+        plan = self.capsule.learning_plan_json or {}
+        levels = plan.get("levels")
+        if not isinstance(levels, list):
+            return None
+        try:
+            level = levels[molecule.granule.order - 1]
+            chapters = level.get("chapters") if isinstance(level, dict) else None
+            if not isinstance(chapters, list):
+                return None
+            return chapters[molecule.order - 1]
+        except (IndexError, AttributeError, TypeError):
+            return None
+
+    def _get_source_excerpt(self, max_chars: int = 4000) -> Optional[str]:
+        if not self.source_material:
+            return None
+        text = self.source_material.get("text")
+        if not isinstance(text, str):
+            return None
+        snippet = text.strip()[:max_chars]
+        return snippet or None
 
     def _create_code_example_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any] | None:
         lesson_text = self._extract_lesson_text(context_atoms)
@@ -720,5 +808,184 @@ class AtomService:
             "extension_ideas": [
                 "Ajoute une fonctionnalité bonus pour aller plus loin.",
                 "Prépare une suite de tests automatisés supplémentaires.",
+            ],
+        }
+
+    def _create_fill_in_blank_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_fill_in_blank_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("text"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Fill-in IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Complète les éléments essentiels du concept {molecule.title}.",
+            "text": f"{molecule.title} implique {{1}} fondamentales et nécessite {{2}} pour être vérifié expérimentalement.",
+            "blanks": [
+                {"answers": ["des lois", "des principes"]},
+                {"answers": ["des mesures", "des observations"]},
+            ],
+        }
+
+    def _create_flashcards_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_flashcards(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("cards"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Flashcards IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Notions clés à retenir pour {molecule.title}",
+            "cards": [
+                {"front": molecule.title, "back": "Définition concise."},
+                {"front": "Application", "back": "Exemple tiré de la leçon."},
+                {"front": "Attention", "back": "Piège ou erreur fréquente."},
+            ],
+        }
+
+    def _create_short_answer_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_short_answer_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("prompt"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Short-answer IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Résume en une phrase l'idée clé de {molecule.title}.",
+            "acceptable_answers": [molecule.title],
+            "explanation": "Mentionner la propriété principale étudiée.",
+        }
+
+    def _create_true_false_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_true_false_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and "correct_answer" in candidate:
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("True/False IA failure for %s: %s", molecule.title, exc)
+        return {
+            "statement": f"{molecule.title} ne fait appel qu'à l'observation et jamais à la modélisation.",
+            "correct_answer": False,
+            "explanation": "Les sciences combinent observation, modélisation et expérimentation.",
+        }
+
+    def _create_matching_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_matching_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("pairs"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Matching IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Associe chaque notion liée à {molecule.title} à la bonne description.",
+            "pairs": [
+                {"left": "Grandeur mesurée", "right": "Valeur déterminée lors d'une expérience"},
+                {"left": "Modèle", "right": "Représentation simplifiée d'un phénomène"},
+            ],
+        }
+
+    def _create_ordering_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_ordering_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("items"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Ordering IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Classe les étapes du raisonnement scientifique associé à {molecule.title}.",
+            "items": [
+                "Observer le phénomène",
+                "Formuler une hypothèse",
+                "Mettre en place l'expérience",
+                "Interpréter les résultats",
+            ],
+        }
+
+    def _create_categorization_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_categorization_exercise(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("categories"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Categorization IA failure for %s: %s", molecule.title, exc)
+        return {
+            "prompt": f"Classe chaque élément selon qu'il est directement lié à {molecule.title}.",
+            "categories": [
+                {"id": "relie", "label": "Lié"},
+                {"id": "non_relie", "label": "Non lié"},
+            ],
+            "items": [
+                {"id": "item1", "label": molecule.title, "correct_category": "relie"},
+                {"id": "item2", "label": "Bruit expérimental", "correct_category": "non_relie"},
+            ],
+        }
+
+    def _create_diagram_completion_content(self, molecule: Molecule, context_atoms: list[Atom]) -> Dict[str, Any]:
+        lesson_text = self._extract_lesson_text(context_atoms)
+        if lesson_text:
+            try:
+                candidate = ai_service.generate_diagram_completion(
+                    lesson_text=lesson_text,
+                    topic=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                )
+                if isinstance(candidate, dict) and candidate.get("slots"):
+                    return candidate
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Diagram IA failure for %s: %s", molecule.title, exc)
+        return {
+            "title": f"Complète le schéma simplifié de {molecule.title}",
+            "slots": [
+                {
+                    "id": "slot1",
+                    "label": "Élément central",
+                    "options": [
+                        {"value": molecule.title, "label": molecule.title},
+                        {"value": "Inconnu", "label": "Inconnu"},
+                    ],
+                    "correct_option": molecule.title,
+                }
             ],
         }

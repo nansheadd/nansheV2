@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # La clé secrète pour signer les JWTs.
     SECRET_KEY: str
 
+    # Coach IA energy configuration
+    COACH_ENERGY_MAX: int = 15
+    COACH_ENERGY_RECOVERY_MINUTES: int = 24 * 60  # full refill over 24 hours by default
+    COACH_ENERGY_MESSAGE_COST: float = 1.0
+
     class Config:
         env_file = ".env"
 

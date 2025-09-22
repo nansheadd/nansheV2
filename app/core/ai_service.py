@@ -26,8 +26,12 @@ from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
 logger = logging.getLogger(__name__)
 
 # This is a lightweight, effective model for generating embeddings.
-# It will be downloaded automatically the first time it's used.
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# It will be downloaded automatically la première fois. On tolère les environnements offline.
+try:  # pragma: no cover - dépend de l'environnement
+    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+except Exception as exc:  # pragma: no cover
+    logger.warning("Impossible de charger le modèle d'embedding, passage en mode dégradé: %s", exc)
+    embedding_model = None
 
 MODEL_PRICING = {
     "gpt-5-mini-2025-08-07": {"input": 0.15, "output": 0.60},
@@ -48,8 +52,70 @@ def _call_ai_with_rag_examples(db: Session, user: User, user_prompt: str, system
 
 def get_text_embedding(text: str) -> list[float]:
     if not text or not isinstance(text, str): return []
+    if embedding_model is None:
+        return []
     embedding = embedding_model.encode(text)
     return embedding.tolist()
+
+
+def _truncate_for_prompt(text: str, max_chars: int = 20000) -> str:
+    if not text or not isinstance(text, str):
+        return ""
+    cleaned = text.strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[:max_chars]
+
+
+def _looks_like_heading(line: str) -> bool:
+    if not line:
+        return False
+    if len(line) <= 4:
+        return False
+    upper_ratio = sum(1 for ch in line if ch.isupper()) / max(len(line), 1)
+    digit_ratio = sum(1 for ch in line if ch.isdigit()) / max(len(line), 1)
+    has_colon = ':' in line
+    starts_with_numbering = bool(
+        line[:8].strip().startswith(tuple(f"{i}." for i in range(1, 10)))
+    ) or line[:8].strip().startswith(tuple(f"{i})" for i in range(1, 10)))
+    is_uppercase_heading = upper_ratio > 0.6 and line == line.upper()
+    return is_uppercase_heading or starts_with_numbering or has_colon or digit_ratio > 0.2
+
+
+def _segment_document(text: str) -> tuple[list[str], list[str]]:
+    lines = [line.strip() for line in text.splitlines()] if text else []
+    cleaned_lines = [line for line in lines if line]
+
+    outline: list[str] = []
+    for line in cleaned_lines:
+        if len(outline) >= 20:
+            break
+        if _looks_like_heading(line):
+            outline.append(line)
+
+    if not outline:
+        outline = cleaned_lines[:12]
+
+    paragraphs: list[str] = []
+    buffer: list[str] = []
+    for raw_line in lines:
+        if not raw_line.strip():
+            if buffer:
+                paragraph = " ".join(buffer).strip()
+                if len(paragraph) > 40:
+                    paragraphs.append(paragraph)
+                buffer = []
+        else:
+            buffer.append(raw_line.strip())
+    if buffer:
+        paragraph = " ".join(buffer).strip()
+        if len(paragraph) > 40:
+            paragraphs.append(paragraph)
+
+    dense_paragraphs = [p for p in paragraphs if len(p.split()) > 8]
+    highlights = dense_paragraphs[:12] if dense_paragraphs else paragraphs[:12]
+
+    return outline, highlights
 
 def call_ai_and_log(db: Session, user: User, model_choice: str, system_prompt: str, user_prompt: str, feature_name: str) -> Dict[str, Any]:
     prompt_tokens = len(encoding.encode(system_prompt + user_prompt))
@@ -186,6 +252,95 @@ def generate_learning_plan(title: str, course_type: str, model_choice: str) -> d
     except Exception as e:
         logger.error(f"Erreur de plan de cours pour '{title}': {e}")
         return {}
+
+
+def generate_learning_plan_from_document(
+    document_text: str,
+    title: str,
+    domain: str,
+    area: str,
+    main_skill: str,
+    model_choice: str,
+) -> dict | None:
+    excerpt = _truncate_for_prompt(document_text, max_chars=12000)
+    if not excerpt:
+        return None
+
+    logger.info("IA Service: génération d'un plan contextualisé à partir d'un document pour '%s'", title)
+    outline, highlights = _segment_document(excerpt)
+    outline_block = "\n".join(f"- {item}" for item in outline) if outline else "- Aucun heading extrait"
+    highlight_block = "\n\n".join(
+        f"[Extrait {idx+1}] {p[:320]}" for idx, p in enumerate(highlights)
+    ) if highlights else "Aucun extrait riche identifié"
+
+    system_prompt = f"""
+Tu es un expert en ingénierie pédagogique. À partir du document fourni, construis un plan d'apprentissage gamifié.
+
+[MÉTADONNÉES DU DOCUMENT]
+- Titre cible : {title}
+- Domaine : {domain}
+- Aire : {area}
+- Compétence principale : {main_skill}
+
+[STRUCTURE DÉTECTÉE]
+{outline_block}
+
+[EXTRAITS CLÉS]
+{highlight_block}
+
+[CONTRAINTES DE SORTIE]
+- Retourne un objet JSON unique avec la structure suivante :
+  {{
+    "overview": {{
+        "title": "{title}",
+        "domain": "{domain}",
+        "area": "{area}",
+        "main_skill": "{main_skill}",
+        "target_audience": "",
+        "source": {{"type": "pdf", "description": "plan généré depuis un document"}}
+    }},
+    "levels": [
+        {{
+            "level_title": "",
+            "xp_target": 0,
+            "summary": "",
+            "chapters": [
+                {{
+                    "chapter_title": "",
+                    "chapter_summary": "",
+                    "learning_objectives": [""],
+                    "key_points": [""],
+                    "source_excerpt": [""],
+                    "assessment_hint": ""
+                }}
+            ]
+        }}
+    ]
+  }}
+- Le plan doit contenir entre 8 et 20 levels maximum.
+- Chaque chapter doit référencer explicitement le document :
+  * "chapter_summary" et "learning_objectives" reprennent des idées du document.
+  * "source_excerpt" contient 1 à 3 citations directes (≤ 240 caractères chacune) extraites mot pour mot du PDF.
+- N'invente aucune notion absente du document. Si une section manque d'information, indique-le clairement.
+- Évite les généralités : reste ancré dans le vocabulaire du PDF.
+"""
+
+    user_prompt = (
+        "[DOCUMENT À SYNTHÉTISER — EXTRAIT LIMITÉ]\n"
+        f"{excerpt}\n"
+        "[FIN DU DOCUMENT]\n"
+        "Respecte strictement les contraintes ci-dessus pour construire le plan JSON."
+    )
+
+    try:
+        return _call_ai_model_json(
+            user_prompt=user_prompt,
+            model_choice=model_choice,
+            system_prompt=system_prompt,
+        )
+    except Exception as exc:
+        logger.error("Erreur lors de la génération du plan contextualisé: %s", exc, exc_info=True)
+        return None
 
 
 def generate_programming_learning_plan(topic: str, language: str, rag_examples: list[dict], model_choice: str) -> dict | None:
@@ -389,10 +544,11 @@ def generate_text_from_prompt(prompt: str, model_choice: str) -> str:
 #### ATOMS IA #####
 
 def generate_contextual_lesson(
-    course_plan_context: str, 
-    app_rules_context: str, 
-    target_lesson_title: str, 
-    model_choice: str
+    course_plan_context: str,
+    app_rules_context: str,
+    target_lesson_title: str,
+    model_choice: str,
+    reference_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Génère le contenu d'une leçon (atomes) en utilisant un contexte riche.
@@ -418,6 +574,12 @@ def generate_contextual_lesson(
         - Le texte doit être clair, engageant et rédigé en Markdown.
         - Tu dois vraiment donner le maximum de théorie avec des exemples si pertinent. NE PAS inclure d'exercices, de quiz ou de questions
     """
+    if reference_text:
+        system_prompt += (
+            "\n        - Ta leçon doit rester fidèle aux extraits suivants issus du support fourni."
+            " Cite explicitement lorsque pertinent.\n        ---\n        RESSOURCE À HONORER:\n"
+            f"        {reference_text}\n        ---"
+        )
     
     user_prompt = f"Génère le contenu pour la leçon : \"{target_lesson_title}\"."
     
@@ -439,7 +601,8 @@ def generate_contextual_exercises(
     lesson_title: str,
     course_type: str, # ex: 'generic', 'philosophy', etc.
     difficulty: Optional[str], # <-- On ajoute le paramètre
-    model_choice: str
+    model_choice: str,
+    reference_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Génère des exercices (ex: un QCM) basés sur le contenu d'une leçon fournie.
@@ -471,6 +634,11 @@ CONTENU DE LA LEÇON À ÉVALUER:
     "explanation": "Une brève explication de pourquoi la bonne réponse est correcte."
   }}
 """
+    if reference_text:
+        system_prompt += (
+            "\n---\nRÉFÉRENCE À RESPECTER:\n"
+            f"{reference_text}\n---"
+        )
     
     user_prompt = f"Génère le QCM pour la leçon '{lesson_title}'."
     
@@ -491,6 +659,7 @@ def generate_programming_lesson(
     lesson_title: str,
     language: str,
     model_choice: str,
+    reference_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     logger.info("IA Service: génération de leçon orientée programmation pour %s", lesson_title)
     system_prompt = f"""
@@ -508,6 +677,11 @@ CONTEXTE DU COURS:
 - Inclue au moins un bloc de code clé (en {language}) et une courte section "À retenir".
 - Évite les projets complets ici (ce sera couvert dans les autres atomes).
 """
+    if reference_text:
+        system_prompt += (
+            "\n---\nRÉFÉRENTIEL FOURNI:\n"
+            f"{reference_text}\n---"
+        )
     user_prompt = f"Rédige la leçon détaillée pour '{lesson_title}'."
     try:
         return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
@@ -750,3 +924,156 @@ Retourne un objet JSON unique :
     except Exception as exc:
         logger.error(f"Erreur de génération de session interactive pour '{lesson_title}': {exc}")
         return None
+
+# ---------------------------------------------------------------------------
+# Générateurs d'exercices scientifiques / mathématiques
+# ---------------------------------------------------------------------------
+
+def generate_fill_in_blank_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Tu es un concepteur pédagogique en sciences. À partir du texte fourni, crée un exercice de texte à trous.
+
+Contraintes :
+- Utilise entre 2 et 4 blancs au format {{1}}, {{2}}, etc.
+- Les blancs doivent correspondre à des mots ou expressions clés issus du texte.
+- Fournis un JSON respectant exactement la structure :
+  {{
+    "prompt": "...",
+    "text": "Phrase avec {{1}} et {{2}}",
+    "blanks": [{{"answers": ["réponse", "synonyme"]}}]
+  }}
+"""
+    user_prompt = f"Génère un texte à trous pour le thème '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_short_answer_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Crée une question à réponse courte en t'appuyant exclusivement sur le texte. Donne 2 ou 3 formulations acceptées.
+
+JSON attendu :
+{{"prompt": "Question ouverte", "acceptable_answers": ["réponse1", "réponse2"], "explanation": "Justification"}}
+"""
+    user_prompt = f"Rédige une question courte sur '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_true_false_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Crée une affirmation vraie ou fausse vérifiable grâce au texte.
+
+JSON : {{"statement": "...", "correct_answer": true/false, "explanation": "..."}}
+"""
+    user_prompt = f"Produit un exercice Vrai/Faux sur '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_matching_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Crée un exercice d'association terme/définition (3 à 5 paires).
+
+JSON : {{"prompt": "...", "pairs": [{{"left": "Terme", "right": "Définition"}}]}}
+"""
+    user_prompt = f"Conçois un appariement pour '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_ordering_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Crée un exercice d'ordonnancement de 4 à 6 étapes décrivant une procédure du texte.
+
+JSON : {{"prompt": "...", "items": ["Étape 1", "Étape 2"]}}
+"""
+    user_prompt = f"Propose un exercice d'ordonnancement pour '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_flashcards(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Génère 3 à 5 flashcards couvrant définitions, exemples et points de vigilance.
+
+JSON : {{"prompt": "...", "cards": [{{"front": "Question", "back": "Réponse"}}]}}
+"""
+    user_prompt = f"Crée des flashcards sur '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_categorization_exercise(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Conçois un exercice de classification avec 2 ou 3 catégories et 4 à 6 items.
+
+JSON : {{"prompt": "...", "categories": [{{"id": "cat1", "label": "Nom"}}], "items": [{{"id": "item1", "label": "Texte", "correct_category": "cat1"}}]}}
+"""
+    user_prompt = f"Prépare une activité de classification pour '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+def generate_diagram_completion(
+    lesson_text: str,
+    topic: str,
+    model_choice: str,
+) -> Dict[str, Any]:
+    system_prompt = f"""
+Crée un schéma à compléter comportant 2 à 4 zones (slots) avec options et bonne réponse.
+
+JSON : {{"title": "...", "description": "...", "slots": [{{"id": "slot1", "label": "Zone", "options": [{{"value": "opt1", "label": "Option"}}], "correct_option": "opt1"}}]}}
+"""
+    user_prompt = f"Propose un schéma à compléter pour '{topic}'.\n\n{lesson_text}"
+    return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+
+
+def generate_classification_metadata(
+    topic: str,
+    domain: str,
+    area: str,
+    model_choice: str = "gpt-5-mini-2025-08-07",
+) -> Dict[str, Any]:
+    """Crée une courte description pour un couple domaine / sous-domaine."""
+
+    system_prompt = """
+Tu gères une taxonomie de capsules éducatives. À partir des informations fournies,
+produis un objet JSON décrivant brièvement le domaine et le sous-domaine, avec quelques exemples.
+
+Format obligatoire :
+{
+  "domain_description": "Phrase concise décrivant le domaine.",
+  "area_description": "Phrase concise décrivant le sous-domaine.",
+  "sample_topics": ["exemple 1", "exemple 2"]
+}
+
+Les phrases doivent être en français, claires et adaptées à un catalogue pédagogique.
+"""
+
+    user_prompt = (
+        f"Texte initial : {topic}\n"
+        f"Domaine retenu : {domain}\n"
+        f"Sous-domaine retenu : {area}\n"
+        "Rédige l'objet JSON demandé."
+    )
+
+    try:
+        return _call_ai_model_json(user_prompt=user_prompt, model_choice=model_choice, system_prompt=system_prompt)
+    except Exception as exc:  # pragma: no cover - tolérance de défaillance
+        logger.error("Erreur lors de la génération de métadonnées de classification: %s", exc, exc_info=True)
+        return {}

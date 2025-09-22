@@ -3,7 +3,7 @@
 import logging
 import json
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from openai import OpenAI
 
@@ -34,13 +34,21 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
     # ========================================================================
     # SECTION 1 : LOGIQUE EXISTANTE (INCHANGÉE)
     # ========================================================================
-    def __init__(self, db: Session, capsule: Capsule, user: User):
+    def __init__(
+        self,
+        db: Session,
+        capsule: Capsule,
+        user: User,
+        *,
+        source_material: Optional[dict] = None,
+    ):
         """
         Initialise le builder avec la session de base de données et la capsule cible.
         """
         self.db = db
         self.capsule = capsule
         self.user = user
+        self.source_material: Optional[dict] = source_material or None
 
 
     def get_details(self, db: Session, user, capsule: Capsule, **kwargs) -> dict:
@@ -64,6 +72,11 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
 
     def generate_learning_plan(self, db: Session, capsule: Capsule) -> dict | None:
         logger.info(f"--> [BASE BUILDER] Génération de plan pour '{capsule.title}'...")
+        if self.source_material:
+            logger.info("--> [BASE BUILDER] Génération contextualisée à partir d'une ressource fournie.")
+            plan_from_source = self._generate_plan_from_source(db, capsule, self.source_material)
+            if plan_from_source:
+                return plan_from_source
         existing_plan = self._find_plan_in_vector_store(db, capsule.main_skill)
         if existing_plan:
             logger.info(f"--> [CACHE] ✅ Plan complet trouvé dans VectorStore. Utilisation directe.")
@@ -78,6 +91,15 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
 
         self._save_plan_to_vector_store(db, capsule, new_plan)
         return new_plan
+
+    def _generate_plan_from_source(
+        self,
+        db: Session,
+        capsule: Capsule,
+        source_material: dict,
+    ) -> dict | None:
+        """Point d'extension pour générer un plan à partir d'une ressource externe (PDF, etc.)."""
+        return None
 
     # --- Méthodes de cache et RAG (inchangées) ---
 

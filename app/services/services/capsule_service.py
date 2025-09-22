@@ -1,10 +1,18 @@
 import importlib
+import io
 import logging
 import json
 from typing import Dict, List, Optional
 
 from fastapi import BackgroundTasks, HTTPException
 from openai import OpenAI
+try:  # pragma: no cover - dépendance facultative en environnement de test
+    from pypdf import PdfReader  # type: ignore
+except ImportError:  # pragma: no cover
+    try:
+        from PyPDF2 import PdfReader  # type: ignore
+    except ImportError:
+        PdfReader = None
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.analytics.vector_store_model import VectorStore
@@ -29,12 +37,15 @@ from app.services.rag_utils import get_embedding
 from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
 from app.services.services.capsules.others.default_builder import DefaultBuilder
+from app.services.services.capsules.sciences.sciences_builder import ScienceBuilder
 from app.services.services.capsules.programming import ProgrammingBuilder
 from app.services.progress_service import TOTAL_XP, BONUS_XP_PER_MOLECULE, calculate_capsule_xp_distribution
 from app.crud import badge_crud
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.analytics.feedback_model import ContentFeedback
+
+PDF_MAX_CHARS = 40000
 
 
 # --- Configuration ---
@@ -49,28 +60,47 @@ except Exception as e:
 # ==============================================================================
 # SECTION 1: FONCTION D'AIGUILLAGE (Dispatcher)
 # ==============================================================================
-def _get_builder_for_capsule(db: Session, capsule: Capsule, user: User) -> BaseCapsuleBuilder: # Ajoutez user ici
+def _get_builder_for_capsule(
+    db: Session,
+    capsule: Capsule,
+    user: User,
+    *,
+    source_material: Optional[dict] = None,
+) -> BaseCapsuleBuilder: # Ajoutez user ici
     domain = capsule.domain
     logger.info(f"Sélection du builder pour le domaine : '{domain}'")
 
     if domain == "languages":
-        return ForeignBuilder(db=db, capsule=capsule, user=user) # Passez user
+        return ForeignBuilder(db=db, capsule=capsule, user=user, source_material=source_material) # Passez user
 
     if domain == "programming":
         area = (capsule.area or "").lower()
-        return ProgrammingBuilder(db=db, capsule=capsule, user=user)
+        return ProgrammingBuilder(db=db, capsule=capsule, user=user, source_material=source_material)
 
-    return DefaultBuilder(db=db, capsule=capsule, user=user)
+    normalized_domain = (domain or "").lower()
+    normalized_area = (capsule.area or "").lower()
+
+    if normalized_domain in ScienceBuilder.SUPPORTED_DOMAINS or normalized_area in ScienceBuilder.SUPPORTED_DOMAINS:
+        return ScienceBuilder(db=db, capsule=capsule, user=user, source_material=source_material)
+
+    return DefaultBuilder(db=db, capsule=capsule, user=user, source_material=source_material)
 
 
-def get_builder_for_capsule(domain: str, area: str, db: Session, capsule: Capsule) -> BaseCapsuleBuilder:
+def get_builder_for_capsule(
+    domain: str,
+    area: str,
+    db: Session,
+    capsule: Capsule,
+    *,
+    source_material: Optional[dict] = None,
+) -> BaseCapsuleBuilder:
     """Compatibilité rétro : construit le builder en résolvant l'utilisateur si besoin."""
     user = getattr(capsule, "creator", None)
     if user is None and capsule.creator_id:
         user = db.get(User, capsule.creator_id)
     if user is None:
         raise ValueError("Impossible de déterminer le créateur de la capsule pour sélectionner le builder.")
-    return _get_builder_for_capsule(db=db, capsule=capsule, user=user)
+    return _get_builder_for_capsule(db=db, capsule=capsule, user=user, source_material=source_material)
 
 
 # ==============================================================================
@@ -89,6 +119,196 @@ class CapsuleService:
         self._progress_cache_capsule_id: Optional[int] = None
         self._is_superuser = bool(getattr(user, "is_superuser", False))
         self._is_premium = getattr(user, "subscription_status", SubscriptionStatus.FREE) == SubscriptionStatus.PREMIUM
+
+    # ------------------------------------------------------------------
+    # Internal helpers for capsule bootstrap
+    # ------------------------------------------------------------------
+    def _create_capsule_shell(
+        self,
+        *,
+        title: str,
+        domain: str,
+        area: str,
+        main_skill: str,
+    ) -> Capsule:
+        capsule = Capsule(
+            title=title,
+            main_skill=main_skill,
+            domain=domain,
+            area=area,
+            creator_id=self.user.id,
+            generation_status=GenerationStatus.PENDING,
+        )
+        self.db.add(capsule)
+        self.db.commit()
+        self.db.refresh(capsule)
+        logger.info("--- [SERVICE] Capsule ID %s créée. ---", capsule.id)
+        self._enroll_creator(capsule)
+        self._award_creation_badges(capsule)
+        return capsule
+
+    def _enroll_creator(self, capsule: Capsule) -> None:
+        enrollment = UserCapsuleEnrollment(user_id=self.user.id, capsule_id=capsule.id)
+        course_progress = UserCourseProgress(user_id=self.user.id, capsule_id=capsule.id)
+        self.db.add(enrollment)
+        self.db.add(course_progress)
+        self.db.commit()
+        logger.info(
+            "--- [SERVICE] Utilisateur %s inscrit à la capsule %s. ---",
+            self.user.id,
+            capsule.id,
+        )
+
+    def _award_creation_badges(self, capsule: Capsule) -> None:
+        try:
+            badge_crud.award_badge(self.db, self.user.id, "artisan-premiere-capsule")
+            total_created = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id).count()
+            if total_created >= 5:
+                badge_crud.award_badge(self.db, self.user.id, "artisan-cinq-capsules")
+            domain_count = (
+                self.db.query(Capsule)
+                .filter(Capsule.creator_id == self.user.id, Capsule.domain == capsule.domain)
+                .count()
+            )
+            if domain_count == 1:
+                badge_crud.award_pioneer_for_domain(self.db, self.user.id, capsule.domain)
+            area_count = (
+                self.db.query(Capsule)
+                .filter(
+                    Capsule.creator_id == self.user.id,
+                    Capsule.domain == capsule.domain,
+                    Capsule.area == capsule.area,
+                )
+                .count()
+            )
+            if area_count == 1:
+                badge_crud.award_pioneer_for_area(
+                    self.db,
+                    self.user.id,
+                    capsule.domain,
+                    capsule.area,
+                )
+        except Exception as exc:  # pragma: no cover - best effort only
+            logger.warning("[BADGE] Attribution échouée: %s", exc, exc_info=True)
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+
+    def _build_plan_and_content(
+        self,
+        capsule: Capsule,
+        builder: BaseCapsuleBuilder,
+    ) -> Capsule:
+        logger.info(
+            "--- [SERVICE] Lancement de generate_learning_plan() pour la capsule %s. ---",
+            capsule.id,
+        )
+        plan_json = builder.generate_learning_plan(db=self.db, capsule=capsule)
+
+        if not plan_json:
+            capsule.generation_status = GenerationStatus.FAILED
+            self.db.commit()
+            logger.error(
+                "--- [SERVICE] Échec de la génération du plan pour la capsule %s. ---",
+                capsule.id,
+            )
+            return capsule
+
+        capsule.learning_plan_json = plan_json
+
+        # créer la hiérarchie granules/molécules
+        for g_order, level_data in enumerate(plan_json.get("levels", [])):
+            new_granule = Granule(
+                title=level_data.get("level_title", f"Niveau {g_order + 1}"),
+                order=g_order + 1,
+                capsule_id=capsule.id,
+            )
+            self.db.add(new_granule)
+            self.db.flush([new_granule])
+
+            for m_order, chapter_data in enumerate(level_data.get("chapters", [])):
+                new_molecule = Molecule(
+                    title=chapter_data.get("chapter_title", f"Leçon {m_order + 1}"),
+                    order=m_order + 1,
+                    granule_id=new_granule.id,
+                )
+                self.db.add(new_molecule)
+
+        capsule.generation_status = GenerationStatus.COMPLETED
+        self.db.commit()
+        self.db.refresh(capsule)
+
+        first_molecule = (
+            self.db.query(Molecule)
+            .join(Granule)
+            .filter(Granule.capsule_id == capsule.id)
+            .order_by(Granule.order, Molecule.order)
+            .first()
+        )
+
+        if first_molecule:
+            try:
+                builder.build_molecule_content(first_molecule)
+                self.db.commit()
+            except Exception as exc:
+                logger.error(
+                    "--- [SERVICE] Échec de génération du contenu initial pour la capsule %s: %s ---",
+                    capsule.id,
+                    exc,
+                    exc_info=True,
+                )
+                self.db.rollback()
+                raise
+        else:
+            logger.warning(
+                "--- [SERVICE] Le plan généré pour la capsule %s est vide. ---",
+                capsule.id,
+            )
+
+        self._notify(
+            title=f"Capsule prête : {capsule.title}",
+            message="Le plan d'apprentissage est disponible. Tu peux lancer la première leçon !",
+            link=f"/capsule/{capsule.domain}/{capsule.area}/{capsule.id}/plan",
+        )
+
+        return capsule
+
+    def _prepare_source_material(self, text: str | None) -> Optional[dict]:
+        if not text:
+            return None
+        cleaned = text.strip()
+        if not cleaned:
+            return None
+        truncated = cleaned[:PDF_MAX_CHARS]
+        logger.info("[PDF] Longueur du texte extrait: %s caractères (après nettoyage)", len(truncated))
+        if len(truncated) < 500:
+            logger.warning("[PDF] Texte très court (<500 caractères). La capsule risque d'être générique.")
+        return {"text": truncated}
+
+    def _extract_text_from_pdf(self, pdf_bytes: bytes) -> str:
+        if PdfReader is None:
+            raise HTTPException(
+                status_code=503,
+                detail="pdf_support_unavailable",
+            )
+
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+        except Exception as exc:
+            logger.error("[PDF] Lecture impossible: %s", exc, exc_info=True)
+            raise HTTPException(status_code=400, detail="invalid_pdf") from exc
+
+        pages_text: List[str] = []
+        for idx, page in enumerate(reader.pages):
+            page_text = page.extract_text() or ""
+            if page_text:
+                pages_text.append(page_text)
+            else:
+                logger.debug("[PDF] Page %s sans texte exploitable.", idx + 1)
+        logger.info("[PDF] Pages lues: %s / %s", len(pages_text), len(getattr(reader, 'pages', [])))
+        full_text = "\n".join(pages_text).strip()
+        return full_text
 
     # ------------------------------------------------------------------
     # Helpers de progression
@@ -510,105 +730,73 @@ class CapsuleService:
         et crée la hiérarchie de la capsule.
         """
         topic = classification_data.get("main_skill", "Sujet inconnu")
-        logger.info(f"\n--- [SERVICE] Création de capsule à partir de la classification pour: '{topic}' ---")
-        
-        new_capsule = Capsule(
-            title=topic.capitalize(),
-            main_skill=topic,
+        title = classification_data.get("title") or topic.capitalize()
+        logger.info(
+            "\n--- [SERVICE] Création de capsule à partir de la classification pour: '%s' ---",
+            topic,
+        )
+
+        new_capsule = self._create_capsule_shell(
+            title=title,
             domain=classification_data.get("domain", "others"),
             area=classification_data.get("area", "generic"),
-            creator_id=self.user.id,
-            generation_status=GenerationStatus.PENDING
+            main_skill=topic,
         )
-        self.db.add(new_capsule)
-        self.db.commit()
-        self.db.refresh(new_capsule)
-        logger.info(f"--- [SERVICE] Capsule ID {new_capsule.id} créée. ---")
-
-        # Inscrire automatiquement le créateur et initialiser sa progression
-        self.db.add(UserCapsuleEnrollment(user_id=self.user.id, capsule_id=new_capsule.id))
-        self.db.add(UserCourseProgress(user_id=self.user.id, capsule_id=new_capsule.id))
-        self.db.commit()
-        logger.info(f"--- [SERVICE] Utilisateur {self.user.id} inscrit à la capsule {new_capsule.id}. ---")
-
-        try:
-            badge_crud.award_badge(self.db, self.user.id, "artisan-premiere-capsule")
-            total_created = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id).count()
-            if total_created >= 5:
-                badge_crud.award_badge(self.db, self.user.id, "artisan-cinq-capsules")
-            # Badges uniques par type (première capsule de l'utilisateur dans domaine/area)
-            domain_count = self.db.query(Capsule).filter(Capsule.creator_id == self.user.id, Capsule.domain == new_capsule.domain).count()
-            if domain_count == 1:
-                badge_crud.award_pioneer_for_domain(self.db, self.user.id, new_capsule.domain)
-            area_count = self.db.query(Capsule).filter(
-                Capsule.creator_id == self.user.id,
-                Capsule.domain == new_capsule.domain,
-                Capsule.area == new_capsule.area,
-            ).count()
-            if area_count == 1:
-                badge_crud.award_pioneer_for_area(self.db, self.user.id, new_capsule.domain, new_capsule.area)
-        except Exception:
-            pass
 
         builder = _get_builder_for_capsule(self.db, new_capsule, self.user)
-        
-        # --- CORRECTION 1 : Appeler la bonne méthode ---
-        # On appelle la méthode de la classe de base qui génère le plan JSON.
-        logger.info(f"--- [SERVICE] Lancement de generate_learning_plan() pour la capsule {new_capsule.id}. ---")
-        plan_json = builder.generate_learning_plan(db=self.db, capsule=new_capsule)
+        return self._build_plan_and_content(new_capsule, builder)
 
-        if not plan_json:
-            new_capsule.generation_status = GenerationStatus.FAILED
-            self.db.commit()
-            logger.error(f"--- [SERVICE] Échec de la génération du plan pour la capsule {new_capsule.id}.")
-            # Vous pourriez vouloir retourner une erreur ici, mais pour l'instant on continue.
-            return new_capsule
+    def create_capsule_from_document(
+        self,
+        *,
+        source_text: str,
+        title: str,
+        domain: str,
+        area: str,
+        main_skill: str,
+    ) -> Capsule:
+        if not (self._is_superuser or self._is_premium):
+            raise HTTPException(status_code=403, detail="premium_required")
 
-        # --- CORRECTION 2 : Sauvegarder le plan et créer la structure ---
-        # On sauvegarde le plan JSON dans l'objet capsule.
-        new_capsule.learning_plan_json = plan_json
-        
-        # On parcourt le plan pour créer les "coquilles vides" des Granules et Molécules.
-        for g_order, level_data in enumerate(plan_json.get("levels", [])):
-            new_granule = Granule(
-                title=level_data.get("level_title", f"Niveau {g_order + 1}"),
-                order=g_order + 1,
-                capsule_id=new_capsule.id
-            )
-            self.db.add(new_granule)
-            self.db.flush() # Nécessaire pour obtenir l'ID du granule
-
-            for m_order, chapter_data in enumerate(level_data.get("chapters", [])):
-                new_molecule = Molecule(
-                    title=chapter_data.get("chapter_title", f"Leçon {m_order + 1}"),
-                    order=m_order + 1,
-                    granule_id=new_granule.id
-                )
-                self.db.add(new_molecule)
-                
-        new_capsule.generation_status = GenerationStatus.COMPLETED
-        self.db.commit()
-        self.db.refresh(new_capsule)
-
-        # --- CORRECTION 3 : La logique de génération du contenu initial reste la même ---
-        logger.info(f"--- [SERVICE] Génération du contenu initial pour la première molécule. ---")
-        first_molecule = self.db.query(Molecule).join(Granule).filter(
-            Granule.capsule_id == new_capsule.id
-        ).order_by(Granule.order, Molecule.order).first()
-
-        if first_molecule:
-            builder.build_molecule_content(first_molecule)
-            self.db.commit()
-        else:
-            logger.warning(f"--- [SERVICE] Le plan généré pour la capsule {new_capsule.id} est vide.")
-
-        self._notify(
-            title=f"Capsule prête : {new_capsule.title}",
-            message="Le plan d'apprentissage est disponible. Tu peux lancer la première leçon !",
-            link=f"/capsule/{new_capsule.domain}/{new_capsule.area}/{new_capsule.id}/plan",
+        resolved_title = title.strip() or main_skill.capitalize()
+        capsule = self._create_capsule_shell(
+            title=resolved_title,
+            domain=domain,
+            area=area,
+            main_skill=main_skill,
         )
 
-        return new_capsule
+        source_material = self._prepare_source_material(source_text)
+        if source_material is not None:
+            source_material.setdefault("origin", "uploaded_document")
+
+        builder = _get_builder_for_capsule(
+            self.db,
+            capsule,
+            self.user,
+            source_material=source_material,
+        )
+        return self._build_plan_and_content(capsule, builder)
+
+    def create_capsule_from_pdf_bytes(
+        self,
+        *,
+        pdf_bytes: bytes,
+        title: str,
+        domain: str,
+        area: str,
+        main_skill: str,
+    ) -> Capsule:
+        text = self._extract_text_from_pdf(pdf_bytes)
+        if not text:
+            raise HTTPException(status_code=400, detail="empty_pdf")
+        return self.create_capsule_from_document(
+            source_text=text,
+            title=title,
+            domain=domain,
+            area=area,
+            main_skill=main_skill,
+        )
     
 
     def generate_next_molecule_content(self, completed_molecule_id: int) -> List[Atom]:

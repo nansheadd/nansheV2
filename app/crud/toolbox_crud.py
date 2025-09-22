@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core import ai_service
+from app.crud import coach_energy_crud
 from app.models.capsule import capsule_model, granule_model, molecule_model, atom_model
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.user.user_model import User
@@ -70,8 +71,10 @@ def ask_coach(
     history: list,
     quick_action: str | None = None,
     selection: dict | None = None,
-) -> str:
+) -> dict:
     """Produit une réponse contextualisée par capsule pour le coach IA."""
+
+    energy_status = coach_energy_crud.consume_energy(db, user)
 
     capsule_id = _extract_capsule_id(context or {})
     capsule = db.get(capsule_model.Capsule, capsule_id) if capsule_id else None
@@ -191,7 +194,11 @@ Réponds exclusivement en JSON avec la structure suivante :
             user_prompt=message,
             feature_name="coach_ia",
         )
-        return response_data.get("response", json.dumps(response_data, ensure_ascii=False))
+        response_text = response_data.get("response", json.dumps(response_data, ensure_ascii=False))
+        return {"response": response_text, "energy": energy_status}
     except Exception as exc:
         logger.error("Coach IA indisponible: %s", exc, exc_info=True)
-        return "Désolé, je ne parviens pas à répondre pour le moment."
+        return {
+            "response": "Désolé, je ne parviens pas à répondre pour le moment.",
+            "energy": energy_status,
+        }

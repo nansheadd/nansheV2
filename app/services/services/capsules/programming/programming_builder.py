@@ -16,9 +16,21 @@ from app.core import ai_service
 class ProgrammingBuilder(BaseCapsuleBuilder):
     """Builder générique pour les capsules de programmation (Python, JS, SQL, etc.)."""
 
-    def __init__(self, db: Session, capsule: Capsule, user: User):
-        super().__init__(db=db, capsule=capsule, user=user)
-        self.atom_service = AtomService(db=db, user=user, capsule=capsule)
+    def __init__(
+        self,
+        db: Session,
+        capsule: Capsule,
+        user: User,
+        *,
+        source_material: Optional[dict] = None,
+    ):
+        super().__init__(db=db, capsule=capsule, user=user, source_material=source_material)
+        self.atom_service = AtomService(
+            db=db,
+            user=user,
+            capsule=capsule,
+            source_material=source_material,
+        )
         self.language = self._detect_language()
 
     # -----------------------------
@@ -71,6 +83,10 @@ class ProgrammingBuilder(BaseCapsuleBuilder):
     # -----------------------------
 
     def generate_learning_plan(self, db: Session, capsule: Capsule) -> Dict[str, Any] | None:
+        if self.source_material:
+            plan_from_source = self._generate_plan_from_source(db, capsule, self.source_material)
+            if plan_from_source:
+                return plan_from_source
         existing_plan = self._find_plan_in_vector_store(db, capsule.main_skill)
         if existing_plan:
             return existing_plan
@@ -87,6 +103,27 @@ class ProgrammingBuilder(BaseCapsuleBuilder):
 
         self._save_plan_to_vector_store(db, capsule, plan)
         return plan
+
+    def _generate_plan_from_source(
+        self,
+        db: Session,
+        capsule: Capsule,
+        source_material: dict,
+    ) -> dict | None:
+        document_text = (source_material or {}).get("text")
+        if not document_text:
+            return None
+        try:
+            return ai_service.generate_learning_plan_from_document(
+                document_text=document_text,
+                title=capsule.title,
+                domain=capsule.domain,
+                area=capsule.area,
+                main_skill=capsule.main_skill,
+                model_choice="gpt-5-mini-2025-08-07",
+            )
+        except Exception:
+            return None
 
     def _get_molecule_recipe(self, molecule: Molecule) -> List[Dict[str, Any]]:
         label = self.language.capitalize()

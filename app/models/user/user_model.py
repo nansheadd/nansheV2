@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from ..capsule.language_roadmap_model import LanguageRoadmap
     from ..progress.user_answer_log_model import UserAnswerLog
     from ..progress.user_activity_log_model import UserActivityLog
+    from ..analytics.classification_feedback_model import ClassificationFeedback
+    from ..toolbox.coach_energy_model import CoachEnergyWallet
 
 # On définit l'énumération pour le statut d'abonnement
 class SubscriptionStatus(str, enum.Enum):
@@ -61,6 +63,12 @@ class User(Base):
     answer_logs: Mapped[List["UserAnswerLog"]] = relationship(back_populates="user")
     notifications: Mapped[List["Notification"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     user_badges: Mapped[List["UserBadge"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    classification_feedbacks: Mapped[List["ClassificationFeedback"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    coach_energy_wallet: Mapped["CoachEnergyWallet"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
     
     @property
     def badges(self):

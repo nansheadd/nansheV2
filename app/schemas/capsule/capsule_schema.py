@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 
 from app.models.capsule.capsule_model import GenerationStatus
@@ -217,3 +218,53 @@ class MoleculeBonusRequest(BaseModel):
     kind: str
     difficulty: Optional[str] = None
     title: Optional[str] = None
+
+
+# ==============================================================================
+# SECTION 6: SCHÉMAS POUR LA CLASSIFICATION / FEEDBACK
+# ==============================================================================
+
+
+class ClassificationOptionDomain(BaseModel):
+    domain: str
+    areas: List[str] = []
+
+
+class ClassificationOptionsResponse(BaseModel):
+    domains: List[ClassificationOptionDomain]
+
+
+class ClassificationFeedbackRequest(BaseModel):
+    input_text: str
+    predicted_domain: Optional[str] = None
+    predicted_area: Optional[str] = None
+    predicted_skill: Optional[str] = None
+    is_correct: bool
+    final_domain: Optional[str] = None
+    final_area: Optional[str] = None
+    final_skill: Optional[str] = None
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def _validate_fields(self):
+        if not self.input_text or not self.input_text.strip():
+            raise ValueError("Le texte d'entrée ne peut pas être vide.")
+        if not self.is_correct:
+            if not self.final_domain or not self.final_domain.strip():
+                raise ValueError("final_domain est requis lorsque la classification est corrigée.")
+            if not self.final_area or not self.final_area.strip():
+                raise ValueError("final_area est requis lorsque la classification est corrigée.")
+        return self
+
+
+class ClassificationFeedbackResponse(BaseModel):
+    feedback_id: int
+    training_entry_id: int
+    input_text: str
+    domain: str
+    area: str
+    main_skill: Optional[str] = None
+    added_to_training: bool
+    taxonomy: ClassificationOptionsResponse
+    created_at: datetime

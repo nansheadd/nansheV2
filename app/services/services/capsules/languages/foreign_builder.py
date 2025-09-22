@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
@@ -10,6 +10,7 @@ from openai import OpenAI
 from app.core.config import settings
 from app.models.user.user_model import User
 from app.services.atom_service import AtomService
+from app.core import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,24 @@ class ForeignBuilder(BaseCapsuleBuilder):
     Builder spécialisé pour les langues, implémentant toutes les méthodes requises.
     """
 
-    def __init__(self, db: Session, capsule: Capsule, user: User):
+    def __init__(
+        self,
+        db: Session,
+        capsule: Capsule,
+        user: User,
+        *,
+        source_material: Optional[dict] = None,
+    ):
         """
         Constructeur qui accepte db et capsule et les passe au parent.
         """
-        super().__init__(db=db, capsule=capsule, user=user)
-        self.atom_service = AtomService(db=db, user=user, capsule=capsule)
+        super().__init__(db=db, capsule=capsule, user=user, source_material=source_material)
+        self.atom_service = AtomService(
+            db=db,
+            user=user,
+            capsule=capsule,
+            source_material=source_material,
+        )
         try:
             self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         except Exception as e:
@@ -66,6 +79,28 @@ class ForeignBuilder(BaseCapsuleBuilder):
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.error(f"Erreur API OpenAI dans ForeignBuilder : {e}")
+            return None
+
+    def _generate_plan_from_source(
+        self,
+        db: Session,
+        capsule: Capsule,
+        source_material: dict,
+    ) -> dict | None:
+        document_text = (source_material or {}).get("text")
+        if not document_text:
+            return None
+        try:
+            return ai_service.generate_learning_plan_from_document(
+                document_text=document_text,
+                title=capsule.title,
+                domain=capsule.domain,
+                area=capsule.area,
+                main_skill=capsule.main_skill,
+                model_choice="gpt-5-mini-2025-08-07",
+            )
+        except Exception as exc:
+            logger.error("Erreur lors de la génération du plan contextualisé pour la capsule de langue : %s", exc, exc_info=True)
             return None
 
     # === IMPLÉMENTATION OBLIGATOIRE N°1 ===

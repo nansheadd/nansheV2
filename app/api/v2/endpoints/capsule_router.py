@@ -11,7 +11,7 @@ import re
 import unicodedata
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from openai import OpenAI
@@ -23,21 +23,27 @@ from app.models.user.user_model import User
 from app.models.capsule import capsule_model, granule_model, atom_model, utility_models, molecule_model
 from app.models.analytics.vector_store_model import VectorStore
 from app.schemas.capsule import capsule_schema
-from app.services.services.capsule_service import CapsuleService
-from app.services.services.capsule_service import get_capsule_by_path
+from app.services.services.capsule_service import CapsuleService, get_capsule_by_path
 from app.services.classification_service import db_classifier
+from app.services.classification_feedback_service import (
+    ClassificationFeedbackPayload,
+    ClassificationFeedbackService,
+)
 from app.services.capsule_addon.exercices.exercices_generator import ExerciseGeneratorService
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.services.rag_utils import get_embedding
-from app.services.services.capsule_service import CapsuleService
-from app.schemas.capsule import capsule_schema # Votre fichier de schémas
 from app.api.v2 import dependencies
 
 
 
 from app.crud import roadmap_crud
 from app.services.services.capsules.languages.foreign_builder import ForeignBuilder
-from app.schemas.capsule.capsule_schema import CapsuleReadWithRoadmap # Le nouveau schéma
+from app.schemas.capsule.capsule_schema import (
+    CapsuleReadWithRoadmap,
+    ClassificationFeedbackRequest,
+    ClassificationFeedbackResponse,
+    ClassificationOptionsResponse,
+)
 from app.crud import badge_crud
 
 
@@ -129,6 +135,39 @@ def create_generic_capsule(
     if not capsule:
         raise HTTPException(status_code=500, detail="La création de la capsule a échoué.")
     
+    return capsule
+
+
+@router.post(
+    "/from-pdf",
+    response_model=capsule_schema.CapsuleRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_capsule_from_pdf(
+    pdf_file: UploadFile = File(...),
+    title: str = Form(...),
+    domain: str = Form(...),
+    area: str = Form(...),
+    main_skill: str = Form(...),
+    db: Session = Depends(dependencies.get_db),
+    current_user: User = Depends(dependencies.get_current_user),
+):
+    if pdf_file.content_type not in {"application/pdf", "application/x-pdf"}:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="unsupported_file_type")
+
+    file_bytes = await pdf_file.read()
+    await pdf_file.close()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="empty_pdf")
+
+    service = CapsuleService(db=db, user=current_user)
+    capsule = service.create_capsule_from_pdf_bytes(
+        pdf_bytes=file_bytes,
+        title=title,
+        domain=domain,
+        area=area,
+        main_skill=main_skill,
+    )
     return capsule
 
 
@@ -370,6 +409,46 @@ def classify_topic(
     
     logger.info(f"--- [CLASSIFY] Résultat: {json.dumps(result, indent=2, ensure_ascii=False)}")
     return result
+
+
+@router.get(
+    "/classification/options",
+    response_model=ClassificationOptionsResponse,
+    summary="Lister les domaines et sous-domaines disponibles",
+)
+def list_classification_options(
+    db: Session = Depends(get_db),
+    current_user: user_model.User = Depends(get_current_user),
+):
+    service = ClassificationFeedbackService(db=db, user=current_user)
+    return service.get_taxonomy_options()
+
+
+@router.post(
+    "/classification/feedback",
+    response_model=ClassificationFeedbackResponse,
+    summary="Valider ou corriger la classification",
+)
+def submit_classification_feedback(
+    request: ClassificationFeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user: user_model.User = Depends(get_current_user),
+):
+    service = ClassificationFeedbackService(db=db, user=current_user)
+    payload = ClassificationFeedbackPayload(
+        input_text=request.input_text,
+        predicted_domain=request.predicted_domain,
+        predicted_area=request.predicted_area,
+        predicted_skill=request.predicted_skill,
+        is_correct=request.is_correct,
+        final_domain=request.final_domain,
+        final_area=request.final_area,
+        final_skill=request.final_skill,
+        notes=request.notes,
+        metadata=request.metadata,
+    )
+    result = service.record_feedback(payload)
+    return ClassificationFeedbackResponse(**result)
 
 
 @router.post("/{capsule_id}/level/{level_order}/session", summary="Préparer et récupérer une session d'apprentissage")

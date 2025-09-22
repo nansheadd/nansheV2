@@ -21,6 +21,12 @@ class AtomContentType(str, enum.Enum):
     # --- 2. Atomes de PRATIQUE GUIDÉE (Guided Practice) ---
     FILL_IN_THE_BLANK = "fill_in_the_blank" # Exercice de type "texte à trous"
     FLASHCARDS = "flashcards"             # Cartes de mémorisation interactives
+    SHORT_ANSWER = "short_answer"         # Réponse courte libre
+    TRUE_FALSE = "true_false"             # Affirmation vrai / faux
+    MATCHING = "matching"                 # Associer deux colonnes
+    ORDERING = "ordering"                 # Remise en ordre d'éléments
+    CATEGORIZATION = "categorization"     # Classer des éléments dans des catégories
+    DIAGRAM_COMPLETION = "diagram_completion" # Compléter un schéma / drag and drop
     TRANSLATION = "translation"           # Exercice de traduction
     CODE_REFACTOR = "code_refactor"       # Exercice de réécriture de code (Prog)
     ARGUMENT_MAPPING = "argument_mapping" # Associer des arguments à des concepts (Philo)

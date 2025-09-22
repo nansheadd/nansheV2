@@ -25,6 +25,7 @@ from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
+from app.models.toolbox.coach_energy_model import CoachEnergyWallet
 
 
 # Ensure the backend/app package is importable when tests run from the repo root.
@@ -48,6 +49,7 @@ TABLES = [
     UserAtomProgress.__table__,
     ContentFeedback.__table__,
     ContentFeedbackDetail.__table__,
+    CoachEnergyWallet.__table__,
 ]
 
 

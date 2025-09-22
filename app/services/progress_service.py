@@ -9,6 +9,7 @@ from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.capsule.atom_model import Atom
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
+from app.models.capsule.granule_model import Granule
 from app.crud import badge_crud
 
 logger = logging.getLogger(__name__)
@@ -213,6 +214,58 @@ class ProgressService:
             while current_day <= last_day:
                 day_set.add(current_day)
                 current_day += timedelta(days=1)
+
+        # Fallback : si aucune session n'est enregistrée (anciennes données),
+        # on estime le temps passé via les complétions d'atoms.
+        if total_sessions == 0 and total_seconds == 0:
+            completion_rows = (
+                self.db.query(
+                    UserAtomProgress.completed_at,
+                    Capsule.id,
+                    Capsule.title,
+                    Capsule.domain,
+                    Capsule.area,
+                )
+                .join(Atom, Atom.id == UserAtomProgress.atom_id)
+                .join(Molecule, Molecule.id == Atom.molecule_id)
+                .join(Granule, Granule.id == Molecule.granule_id)
+                .join(Capsule, Capsule.id == Granule.capsule_id)
+                .filter(
+                    UserAtomProgress.user_id == self.user_id,
+                    UserAtomProgress.status == 'completed',
+                    UserAtomProgress.completed_at.isnot(None),
+                )
+                .all()
+            )
+
+            fallback_seconds_per_completion = 300  # 5 minutes par activité complétée
+            for completion in completion_rows:
+                completed_at = self._normalize_datetime(completion.completed_at)
+                if not completed_at:
+                    continue
+
+                seconds = fallback_seconds_per_completion
+                total_seconds += seconds
+                total_sessions += 1
+
+                domain = completion.domain or "autres"
+                area = completion.area or "général"
+
+                domain_totals[domain] = domain_totals.get(domain, 0.0) + seconds
+                area_totals[(domain, area)] = area_totals.get((domain, area), 0.0) + seconds
+
+                capsule_key = completion.id if completion.id is not None else f"uncategorized-{area}"
+                if capsule_key not in capsule_totals:
+                    capsule_totals[capsule_key] = {
+                        "capsule_id": completion.id,
+                        "title": completion.title or "Session libre",
+                        "domain": domain,
+                        "area": area,
+                        "seconds": 0,
+                    }
+                capsule_totals[capsule_key]["seconds"] += seconds
+
+                day_set.add(completed_at.date())
 
         domain_breakdown = [
             {"domain": domain, "seconds": int(seconds)}

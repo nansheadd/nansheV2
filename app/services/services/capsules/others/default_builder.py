@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 
@@ -7,6 +8,7 @@ from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
 from app.models.capsule.atom_model import Atom, AtomContentType
 from app.services.atom_service import AtomService
+from app.core import ai_service
 from app.services.services.capsules.base_builder import BaseCapsuleBuilder
 
 class DefaultBuilder(BaseCapsuleBuilder):
@@ -15,10 +17,22 @@ class DefaultBuilder(BaseCapsuleBuilder):
     la logique de fabrication des atomes à l'AtomService.
     """
 
-    def __init__(self, db: Session, capsule: Capsule, user: User):
+    def __init__(
+        self,
+        db: Session,
+        capsule: Capsule,
+        user: User,
+        *,
+        source_material: Optional[dict] = None,
+    ):
         """ Initialise le builder et le service d'atomes associé. """
-        super().__init__(db=db, capsule=capsule, user=user)
-        self.atom_service = AtomService(db=db, user=user, capsule=capsule)
+        super().__init__(db=db, capsule=capsule, user=user, source_material=source_material)
+        self.atom_service = AtomService(
+            db=db,
+            user=user,
+            capsule=capsule,
+            source_material=source_material,
+        )
 
     def _get_molecule_recipe(self, molecule: Molecule) -> List[Dict[str, Any]]:
         """
@@ -48,3 +62,26 @@ class DefaultBuilder(BaseCapsuleBuilder):
             context_atoms,
             difficulty=difficulty # <-- On transmet l'argument
         )
+
+    def _generate_plan_from_source(
+        self,
+        db: Session,
+        capsule: Capsule,
+        source_material: dict,
+    ) -> dict | None:
+        document_text = (source_material or {}).get("text")
+        if not document_text:
+            return None
+        try:
+            return ai_service.generate_learning_plan_from_document(
+                document_text=document_text,
+                title=capsule.title,
+                domain=capsule.domain,
+                area=capsule.area,
+                main_skill=capsule.main_skill,
+                model_choice="gpt-5-mini-2025-08-07",
+            )
+        except Exception as exc:
+            logger = logging.getLogger(__name__)
+            logger.error("Echec génération plan contextualisé: %s", exc, exc_info=True)
+            return None

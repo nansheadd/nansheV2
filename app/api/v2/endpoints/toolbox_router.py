@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
-from app.crud import toolbox_crud, toolbox_notes_crud
+from app.crud import toolbox_crud, toolbox_notes_crud, coach_energy_crud
 from app.schemas.toolbox import (
     MoleculeNoteCreate,
     MoleculeNoteOut,
@@ -29,16 +29,29 @@ def handle_coach_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    response = toolbox_crud.ask_coach(
-        db=db, 
-        user=current_user, 
-        message=request.message, 
-        context=request.context,
-        history=request.history,
-        quick_action=request.quick_action,
-        selection=request.selection,
-    )
-    return {"response": response}
+    try:
+        return toolbox_crud.ask_coach(
+            db=db,
+            user=current_user,
+            message=request.message,
+            context=request.context,
+            history=request.history,
+            quick_action=request.quick_action,
+            selection=request.selection,
+        )
+    except coach_energy_crud.CoachEnergyDepleted as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "coach_energy_depleted", "energy": exc.status},
+        ) from exc
+
+
+@router.get("/coach/energy")
+def get_coach_energy(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return coach_energy_crud.get_energy_status(db, current_user)
 
 
 def _serialize_note(note: MoleculeNote) -> MoleculeNoteOut:
