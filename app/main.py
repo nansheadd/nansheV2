@@ -1,5 +1,6 @@
-# Fichier: nanshe/backend/app/main.py (VERSION FINALE AVEC SQLADMIN ET PGVECTOR FIX)
 import logging
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -46,17 +47,44 @@ app = FastAPI(
     title="Nanshe API V2",
     openapi_url="/api/v2/openapi.json"
 )
+def _sanitize_origin(origin: str | None) -> str | None:
+    if not origin:
+        return None
+    value = origin.strip()
+    if not value:
+        return None
+    if not value.startswith("http"):
+        value = f"https://{value}"
+    return value.rstrip("/")
+
+
+def _build_cors_origins() -> list[str]:
+    base_origins = {_sanitize_origin(o) for o in settings.BACKEND_CORS_ORIGINS}
+
+    for candidate in (
+        str(settings.FRONTEND_BASE_URL),
+        str(settings.BACKEND_BASE_URL),
+    ):
+        base_origins.add(_sanitize_origin(candidate))
+
+    vercel_host = os.getenv("VERCEL_URL")
+    base_origins.add(_sanitize_origin(vercel_host))
+
+    additional = os.getenv("ADDITIONAL_CORS_ORIGINS")
+    if additional:
+        for origin in additional.split(","):
+            base_origins.add(_sanitize_origin(origin))
+
+    cleaned = sorted({origin for origin in base_origins if origin})
+    logger.info("CORS origins configurés: %s", cleaned)
+    return cleaned
+
+
 # --- Configuration des Middlewares ---
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
-origins = [
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:5173",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=_build_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

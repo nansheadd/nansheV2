@@ -1,21 +1,47 @@
-# app/api/routers/nlp.py
+"""Routes publiques pour la classification NLP légère."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from app.core.config import settings
+
 from app.nlp.topic_classifier import TopicClassifier
 
 router = APIRouter(prefix="/nlp", tags=["nlp"])
+logger = logging.getLogger(__name__)
 
-# Singleton global chargé au boot (voir main.py plus bas)
-_classifier: TopicClassifier | None = None
+
+@router.on_event("startup")
+def _init_classifier() -> None:
+    if router.state.__dict__.get("classifier"):
+        return
+
+    base_path = Path(__file__).resolve().parents[3]
+    train_path = base_path / "core" / "course_topic_train.jsonl"
+    labels_path = base_path / "core" / "course_topic_labels.json"
+
+    try:
+        classifier = TopicClassifier(str(train_path), str(labels_path))
+        router.state.classifier = classifier
+        logger.info("TopicClassifier initialisé avec %s labels.", len(classifier.label_set))
+    except Exception as exc:  # pragma: no cover - dépend des fichiers de données
+        logger.error("Impossible d'initialiser le TopicClassifier: %s", exc)
+        router.state.classifier = None
+
 
 def get_classifier() -> TopicClassifier:
-    if not router.state.__dict__.get("classifier"):
+    classifier = router.state.__dict__.get("classifier")
+    if not classifier:
         raise HTTPException(status_code=503, detail="Classifier not initialized")
-    return router.state.classifier
+    return classifier
+
 
 class ClassifyIn(BaseModel):
     text: str
+
 
 @router.post("/classify-topic")
 def classify_topic(payload: ClassifyIn, clf: TopicClassifier = Depends(get_classifier)):
@@ -27,8 +53,9 @@ def classify_topic(payload: ClassifyIn, clf: TopicClassifier = Depends(get_class
         "score": score,
         "second_best": scores[1][0] if len(scores) > 1 else None,
         "margin": margin,
-        "scores": scores  # utile pour debug UI
+        "scores": scores,
     }
+
 
 @router.post("/rebuild-centroids")
 def rebuild_centroids(clf: TopicClassifier = Depends(get_classifier)):
