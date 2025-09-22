@@ -10,6 +10,7 @@ from app.models.capsule.granule_model import Granule
 from app.models.capsule.language_roadmap_model import Skill, SkillType, Unit
 from app.models.capsule.molecule_model import Molecule
 from app.models.user.user_model import User
+from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption
 
 
 def create_user(db, **kwargs) -> User:
@@ -28,6 +29,41 @@ def create_user(db, **kwargs) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+def create_feature_poll(
+    db,
+    *,
+    slug: str = "test-poll",
+    title: str = "Sondage",
+    option_titles: list[str] | None = None,
+    **kwargs,
+) -> FeaturePoll:
+    defaults = {
+        "slug": slug,
+        "title": title,
+        "description": kwargs.pop("description", None),
+        "is_active": kwargs.pop("is_active", True),
+        "starts_at": kwargs.pop("starts_at", None),
+        "ends_at": kwargs.pop("ends_at", None),
+        "max_votes_free": kwargs.pop("max_votes_free", 1),
+        "max_votes_premium": kwargs.pop("max_votes_premium", 3),
+    }
+    defaults.update(kwargs)
+    poll = FeaturePoll(**defaults)
+
+    titles = option_titles or ["Option A", "Option B", "Option C"]
+    for index, option_title in enumerate(titles):
+        poll.options.append(
+            FeaturePollOption(title=option_title, position=index)
+        )
+
+    db.add(poll)
+    db.commit()
+    db.refresh(poll)
+    for option in poll.options:
+        db.refresh(option)
+    return poll
 
 
 def ensure_skill(db, code: str = "generic") -> Skill:

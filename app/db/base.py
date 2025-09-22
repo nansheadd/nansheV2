@@ -41,6 +41,7 @@ from app.models.analytics.classification_feedback_model import ClassificationFee
 from app.models.analytics.ai_token_log_model import AITokenLog
 from app.models.toolbox.molecule_note_model import MoleculeNote
 from app.models.toolbox.coach_energy_model import CoachEnergyWallet
+from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption, FeaturePollVote
 
 __all__ = (
     "Base",
@@ -74,4 +75,7 @@ __all__ = (
     "MoleculeNote",
     "ClassificationFeedback",
     "CoachEnergyWallet",
+    "FeaturePoll",
+    "FeaturePollOption",
+    "FeaturePollVote",
 )
