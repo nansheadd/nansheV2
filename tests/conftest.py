@@ -14,6 +14,7 @@ from app.models.analytics.feedback_model import (
     ContentFeedback,
     ContentFeedbackDetail,
 )
+from app.models.analytics.classification_feedback_model import ClassificationFeedback
 from app.models.capsule.atom_model import Atom
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.granule_model import Granule
@@ -21,6 +22,8 @@ from app.models.capsule.language_roadmap_model import Skill
 from app.models.capsule.molecule_model import Molecule
 from app.models.capsule.utility_models import UserCapsuleEnrollment, UserCapsuleProgress
 from app.models.user.user_model import User
+from app.models.user.notification_model import Notification
+from app.models.user.badge_model import Badge, UserBadge
 from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
@@ -50,6 +53,9 @@ TABLES = [
     ContentFeedback.__table__,
     ContentFeedbackDetail.__table__,
     CoachEnergyWallet.__table__,
+    Notification.__table__,
+    Badge.__table__,
+    UserBadge.__table__,
 ]
 
 

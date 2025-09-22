@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User, SubscriptionStatus
+from app.models.user.badge_model import Badge
 from app.crud import user_crud, badge_crud
 
 router = APIRouter()
@@ -16,8 +17,33 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 
 PREMIUM_BADGE_SLUG = "premium-subscriber"
+PREMIUM_BADGE_NAME = "Abonné Premium"
+PREMIUM_BADGE_DESCRIPTION = "Un abonnement premium est actif sur ce compte."
+PREMIUM_BADGE_ICON = "crown"
+PREMIUM_BADGE_CATEGORY = "Premium"
+PREMIUM_BADGE_POINTS = 50
 PREMIUM_TITLE = "Membre Premium"
 PREMIUM_BORDER_COLOR = "#FFD700"  # Couleur dorée
+
+
+def _ensure_premium_badge_exists(db: Session) -> None:
+    """Garantit que le badge premium est présent en base pour l'attribution."""
+
+    badge = db.query(Badge).filter(Badge.slug == PREMIUM_BADGE_SLUG).first()
+    if badge:
+        return
+
+    badge = Badge(
+        name=PREMIUM_BADGE_NAME,
+        slug=PREMIUM_BADGE_SLUG,
+        description=PREMIUM_BADGE_DESCRIPTION,
+        icon=PREMIUM_BADGE_ICON,
+        category=PREMIUM_BADGE_CATEGORY,
+        points=PREMIUM_BADGE_POINTS,
+    )
+    db.add(badge)
+    db.flush()
+    logger.info("Création du badge premium manquant (%s)", PREMIUM_BADGE_SLUG)
 
 
 def _activate_premium_for_user(db: Session, user: Optional[User]) -> None:
@@ -45,8 +71,15 @@ def _activate_premium_for_user(db: Session, user: Optional[User]) -> None:
         db.refresh(user)
         logger.info("✅ Statut PREMIUM activé pour l'utilisateur %s", user.id)
 
+    _ensure_premium_badge_exists(db)
+
     try:
-        badge_crud.award_badge(db, user_id=user.id, badge_slug=PREMIUM_BADGE_SLUG)
+        awarded_badge = badge_crud.award_badge(db, user_id=user.id, badge_slug=PREMIUM_BADGE_SLUG)
+        if awarded_badge is None:
+            logger.warning(
+                "Impossible d'attribuer le badge premium à l'utilisateur %s: badge introuvable.",
+                user.id,
+            )
     except Exception as exc:  # pragma: no cover - sécurité supplémentaire
         logger.warning("Impossible d'attribuer le badge premium à l'utilisateur %s: %s", user.id, exc)
 
