@@ -17,6 +17,7 @@ from .endpoints import (
     resend_webhook_router,
     legal_router,
     conversation_ws,
+    feature_vote_router,
 )
 
 api_router = APIRouter()
@@ -34,6 +35,7 @@ api_router.include_router(ws_debug.router,prefix="/ws-test", tags=["WsDebug"])
 api_router.include_router(badge_router.router, prefix="/badges", tags=["Badges"])
 api_router.include_router(programming_router.router, prefix="/programming", tags=["Programming"])
 api_router.include_router(stripe_router.router, prefix="/stripe", tags=["stripe"])
-api_router.include_router(auth_email_router.router, prefix="/auth", tags=["Auth Email"]) 
-api_router.include_router(resend_webhook_router.router, tags=["Webhooks"]) 
+api_router.include_router(auth_email_router.router, prefix="/auth", tags=["Auth Email"])
+api_router.include_router(resend_webhook_router.router, tags=["Webhooks"])
 api_router.include_router(legal_router.router)
+api_router.include_router(feature_vote_router.router, prefix="/feature-polls", tags=["FeatureVotes"])

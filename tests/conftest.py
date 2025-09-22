@@ -40,6 +40,7 @@ from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.toolbox.coach_energy_model import CoachEnergyWallet
+from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption, FeaturePollVote
 from app.models.email.email_token import EmailToken
 
 
@@ -69,6 +70,9 @@ TABLES = [
     Notification.__table__,
     Badge.__table__,
     UserBadge.__table__,
+    FeaturePoll.__table__,
+    FeaturePollOption.__table__,
+    FeaturePollVote.__table__,
 ]
 
 
