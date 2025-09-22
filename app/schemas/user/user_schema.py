@@ -31,8 +31,17 @@ class User(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
+    is_email_verified: bool
     created_at: datetime
+    last_login_at: Optional[datetime] = None
+    active_title: Optional[str] = None
+    profile_border_color: Optional[str] = None
+    xp_points: int
+    level: int
     subscription_status: SubscriptionStatus = SubscriptionStatus.FREE
+    stripe_customer_id: Optional[str] = None
+    account_deletion_requested_at: Optional[datetime] = None
+    account_deletion_scheduled_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True # Permet à Pydantic de lire les modèles SQLAlchemy

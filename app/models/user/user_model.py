@@ -52,6 +52,12 @@ class User(Base):
         server_default=SubscriptionStatus.FREE.value
     )
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    account_deletion_requested_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    account_deletion_scheduled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     
     # --- Relations (inchangées) ---
     enrollments: Mapped[List["UserCapsuleEnrollment"]] = relationship(back_populates="user", cascade="all, delete-orphan")

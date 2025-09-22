@@ -25,6 +25,8 @@ PREMIUM_BADGE_POINTS = 50
 PREMIUM_TITLE = "Membre Premium"
 PREMIUM_BORDER_COLOR = "#FFD700"  # Couleur dorée
 
+ACTIVE_SUBSCRIPTION_STATUSES = {"trialing", "active", "past_due", "unpaid"}
+
 
 def _ensure_premium_badge_exists(db: Session) -> None:
     """Garantit que le badge premium est présent en base pour l'attribution."""
@@ -109,6 +111,29 @@ def _set_subscription_to_canceled(db: Session, user: Optional[User]) -> None:
 
 # --- Helpers Stripe -------------------------------------------------------
 
+def _cancel_active_subscriptions_for_customer(customer_id: Optional[str]) -> list[str]:
+    """Annule toutes les souscriptions Stripe actives pour un client donné."""
+
+    if not customer_id:
+        return []
+
+    canceled_ids: list[str] = []
+    subscriptions = stripe.Subscription.list(customer=customer_id, status="all", limit=100)
+
+    data = getattr(subscriptions, "data", None)
+    if data is None and isinstance(subscriptions, dict):  # pragma: no cover - support tests
+        data = subscriptions.get("data", [])
+
+    for subscription in data or []:
+        status = subscription.get("status")
+        sub_id = subscription.get("id")
+        if status in ACTIVE_SUBSCRIPTION_STATUSES and sub_id:
+            stripe.Subscription.delete(sub_id)
+            canceled_ids.append(sub_id)
+
+    return canceled_ids
+
+
 def _parse_user_id(value: Any) -> Optional[int]:
     if value in (None, ""):
         return None
@@ -188,6 +213,37 @@ def _find_user_for_event(
         customer_email,
     )
     return None
+
+
+@router.post("/cancel-subscription")
+async def cancel_subscription(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permet à l'utilisateur connecté d'annuler son abonnement Stripe en cours."""
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="stripe_not_configured")
+
+    if not current_user.stripe_customer_id:
+        _set_subscription_to_canceled(db, current_user)
+        return {"status": "already_canceled", "canceled_subscriptions": []}
+
+    try:
+        canceled_ids = _cancel_active_subscriptions_for_customer(current_user.stripe_customer_id)
+    except stripe.error.StripeError as exc:
+        logger.error(
+            "Stripe cancellation error for user %s (customer %s): %s",
+            current_user.id,
+            current_user.stripe_customer_id,
+            exc,
+        )
+        raise HTTPException(status_code=502, detail="stripe_cancellation_failed") from exc
+
+    _set_subscription_to_canceled(db, current_user)
+
+    status_value = "canceled" if canceled_ids else "already_canceled"
+    return {"status": status_value, "canceled_subscriptions": canceled_ids}
 
 
 @router.post("/create-checkout-session")

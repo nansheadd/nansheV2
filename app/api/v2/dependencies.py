@@ -1,4 +1,5 @@
 import logging
+
 from fastapi import Depends, HTTPException, status, Request, WebSocket, Query
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
@@ -45,7 +46,13 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
     if user is None:
         log.warning(f"Validation échouée: Utilisateur avec ID {user_id} non trouvé.")
         raise credentials_exception
-    
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="inactive_user")
+
+    if user.account_deletion_requested_at is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_deletion_scheduled")
+
     log.info(f"Utilisateur {user.id} validé avec succès via token.")
     return user
 

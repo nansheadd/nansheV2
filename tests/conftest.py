@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///test.db")
+os.environ.setdefault("RESEND_API_KEY", "test-resend")
+os.environ.setdefault("FRONTEND_BASE_URL", "http://localhost:5173")
+os.environ.setdefault("BACKEND_BASE_URL", "http://localhost:8000")
+os.environ.setdefault("EMAIL_FROM", "noreply@example.com")
+os.environ.setdefault("SECRET_KEY", "secret-key")
+os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test")
+os.environ.setdefault("STRIPE_PREMIUM_PRICE_ID", "price_test")
+os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test")
 
 from app.db.base_class import Base
 from app.models.analytics.feedback_model import (
@@ -29,6 +40,7 @@ from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.toolbox.coach_energy_model import CoachEnergyWallet
+from app.models.email.email_token import EmailToken
 
 
 # Ensure the backend/app package is importable when tests run from the repo root.
@@ -53,6 +65,7 @@ TABLES = [
     ContentFeedback.__table__,
     ContentFeedbackDetail.__table__,
     CoachEnergyWallet.__table__,
+    EmailToken.__table__,
     Notification.__table__,
     Badge.__table__,
     UserBadge.__table__,
