@@ -140,6 +140,14 @@ def seed_badges(db: Session):
             "points": 5,
         },
         {
+            "name": "Abonné Premium",
+            "slug": "premium-subscriber",
+            "description": "Un abonnement premium est actif sur ce compte.",
+            "icon": "crown",
+            "category": "Premium",
+            "points": 50,
+        },
+        {
             "name": "Artisan en herbe",
             "slug": "artisan-premiere-capsule",
             "description": "Première capsule générée",
