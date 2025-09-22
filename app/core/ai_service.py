@@ -3,8 +3,7 @@
 import json
 import logging
 import requests
-import openai
-import tiktoken 
+import tiktoken
 import google.generativeai as genai
 from sqlalchemy.orm import Session
 from app.models.user.user_model import User
@@ -12,7 +11,6 @@ from app.models.user.user_model import User
 from app.models.analytics.golden_examples_model import GoldenExample
 from app.models.analytics.ai_token_log_model import AITokenLog
 
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 
 
@@ -22,26 +20,40 @@ from typing import List, Dict, Any, Optional
 from app.core.config import settings
 from app.core import prompt_manager
 from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
+from app.core.embeddings import get_text_embedding as _compute_text_embedding
 
 logger = logging.getLogger(__name__)
-
-# This is a lightweight, effective model for generating embeddings.
-# It will be downloaded automatically la première fois. On tolère les environnements offline.
-try:  # pragma: no cover - dépend de l'environnement
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-except Exception as exc:  # pragma: no cover
-    logger.warning("Impossible de charger le modèle d'embedding, passage en mode dégradé: %s", exc)
-    embedding_model = None
 
 MODEL_PRICING = {
     "gpt-5-mini-2025-08-07": {"input": 0.15, "output": 0.60},
     # Ajoutez les autres modèles ici
 }
 
-try:
-    encoding = tiktoken.encoding_for_model("gpt-5-mini-2025-08-07")
-except Exception:
-    encoding = tiktoken.get_encoding("cl100k_base")
+class _SimpleEncoding:
+    """Fallback tokenizer that approximates token counting offline."""
+
+    @staticmethod
+    def encode(text: str) -> list[int]:
+        tokens = (text or "").split()
+        return list(range(len(tokens)))
+
+
+def _load_tiktoken_encoding() -> "tiktoken.Encoding | _SimpleEncoding":
+    try:
+        return tiktoken.encoding_for_model("gpt-5-mini-2025-08-07")
+    except Exception as exc:  # pragma: no cover - depends on network
+        logger.warning("Tiktoken model unavailable (%s), fallback to cl100k_base.", exc)
+        try:
+            return tiktoken.get_encoding("cl100k_base")
+        except Exception as fallback_exc:  # pragma: no cover - offline fallback
+            logger.warning(
+                "Tiktoken encodings indisponibles (%s). Utilisation d'un tokenizeur simple.",
+                fallback_exc,
+            )
+            return _SimpleEncoding()
+
+
+encoding = _load_tiktoken_encoding()
 
 def _call_ai_with_rag_examples(db: Session, user: User, user_prompt: str, system_prompt_template: str, feature_name: str, example_type: str, model_choice: str, prompt_variables: dict) -> Dict[str, Any]:
     prompt_embedding = get_text_embedding(user_prompt)
@@ -50,12 +62,10 @@ def _call_ai_with_rag_examples(db: Session, user: User, user_prompt: str, system
     final_system_prompt = prompt_manager.get_prompt(system_prompt_template, rag_examples=rag_examples, ensure_json=True, **prompt_variables)
     return call_ai_and_log(db=db, user=user, model_choice=model_choice, system_prompt=final_system_prompt, user_prompt=user_prompt, feature_name=feature_name)
 
-def get_text_embedding(text: str) -> list[float]:
-    if not text or not isinstance(text, str): return []
-    if embedding_model is None:
-        return []
-    embedding = embedding_model.encode(text)
-    return embedding.tolist()
+def get_text_embedding(text: str, *, allow_remote: bool | None = None) -> list[float]:
+    """Wrapper conservé pour compatibilité avec l'ancien import."""
+
+    return _compute_text_embedding(text, allow_remote=allow_remote)
 
 
 def _truncate_for_prompt(text: str, max_chars: int = 20000) -> str:

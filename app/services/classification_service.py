@@ -1,64 +1,95 @@
-import torch
+"""Utilities for classifying user input against the pgvector store."""
+
+from __future__ import annotations
+
 import logging
+from typing import List
+
 from sqlalchemy.orm import Session
-from sqlalchemy import text, literal_column # 👈 AJOUTER 'literal_column'
-from app.db.session import SessionLocal
+
 from app.models.analytics.vector_store_model import VectorStore
-from sentence_transformers import SentenceTransformer
 from app.services.rag_utils import get_embedding
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from app.core.embeddings import cosine_similarity, ensure_dimension, normalize_vector
 
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class DBClassifier:
-    def classify(self, text: str, db: Session, top_k: int = 1, threshold: float = 0.5):
-        logger.info(f"--- [DB_CLASSIFIER] Recherche des '{top_k}' correspondances les plus proches pour: '{text}'")
-        
-        # 1. Obtenir l'embedding du texte d'entrée
-        input_embedding = get_embedding(text)
-        
-        # 2. Récupérer tous les vecteurs de la base de données
-        all_vectors = db.query(VectorStore).all()
-        if not all_vectors:
-            logger.warning("--- [DB_CLASSIFIER] La base de données vectorielle est vide. Aucun entraînement trouvé.")
+    """Simple cosine-similarity classifier backed by the VectorStore table."""
+
+    def classify(
+        self,
+        text: str,
+        db: Session,
+        top_k: int = 1,
+        threshold: float = 0.5,
+    ) -> List[dict]:
+        logger.info("--- [DB_CLASSIFIER] Recherche des '%s' correspondances pour '%s'", top_k, text)
+
+        input_embedding = normalize_vector(get_embedding(text))
+        if not input_embedding or not any(abs(v) > 0 for v in input_embedding):
+            logger.warning("--- [DB_CLASSIFIER] Embedding vide pour le texte fourni.")
             return []
 
-        # 3. Extraire les embeddings et les métadonnées
-        db_embeddings = np.array([v.embedding for v in all_vectors])
-        
-        # 4. Calculer la similarité cosinus
-        similarities = cosine_similarity([input_embedding], db_embeddings)[0]
-        
-        # 5. Trouver les meilleurs scores
-        # On associe chaque similarité à son vecteur correspondant
-        results_with_scores = sorted(zip(all_vectors, similarities), key=lambda item: item[1], reverse=True)
+        stored_vectors = db.query(VectorStore).all()
+        if not stored_vectors:
+            logger.warning("--- [DB_CLASSIFIER] La base vectorielle est vide.")
+            return []
 
-        # 6. Filtrer les résultats par seuil de confiance et formater la sortie
-        final_results = []
-        for vector, score in results_with_scores[:top_k]:
-            if score >= threshold:
-                logger.info(f"    -> Match trouvé: '{vector.chunk_text}' (Skill: {vector.skill}) avec un score de {score:.4f}")
-                final_results.append({
+        enriched: list[tuple[VectorStore, float]] = []
+        for vector_row in stored_vectors:
+            try:
+                raw_embedding = list(vector_row.embedding)
+            except TypeError:
+                raw_embedding = []
+
+            if not raw_embedding:
+                continue
+
+            aligned = ensure_dimension(raw_embedding, len(input_embedding))
+            aligned = normalize_vector(aligned)
+            score = cosine_similarity(input_embedding, aligned)
+            enriched.append((vector_row, score))
+
+        if not enriched:
+            logger.warning("--- [DB_CLASSIFIER] Aucun embedding valide trouvé dans la base.")
+            return []
+
+        results_with_scores = sorted(enriched, key=lambda item: item[1], reverse=True)
+
+        final_results: List[dict] = []
+        for vector, score in results_with_scores[: top_k or 1]:
+            if score < threshold:
+                logger.warning(
+                    "    -> Match ignoré: '%s' (score %.4f < %.2f)",
+                    vector.chunk_text,
+                    score,
+                    threshold,
+                )
+                continue
+
+            logger.info(
+                "    -> Match trouvé: '%s' (Skill: %s) score=%.4f",
+                vector.chunk_text,
+                vector.skill,
+                score,
+            )
+            final_results.append(
+                {
                     "category": {
-                        # --- LA CORRECTION EST ICI ---
-                        # On s'assure de retourner le 'skill' qui est la VRAIE cible,
-                        # pas le 'chunk_text' qui est juste l'exemple d'entraînement.
-                        "name": vector.skill, 
+                        "name": vector.skill,
                         "domain": vector.domain,
-                        "area": vector.area
+                        "area": vector.area,
                     },
                     "confidence": float(score),
-                    "source_text": vector.chunk_text # On garde le texte source pour le débogage
-                })
-            else:
-                logger.warning(f"    -> Match ignoré (score trop bas): '{vector.chunk_text}' (Score: {score:.4f} < {threshold})")
+                    "source_text": vector.chunk_text,
+                }
+            )
 
         if not final_results:
-            logger.error("--- [DB_CLASSIFIER] Aucun match trouvé au-dessus du seuil de confiance.")
+            logger.error("--- [DB_CLASSIFIER] Aucun match au-dessus du seuil.")
 
         return final_results
+
 
 db_classifier = DBClassifier()

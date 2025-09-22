@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.analytics.vector_store_model import VectorStore
 from app.core.ai_service import get_text_embedding
+from app.core.embeddings import EMBEDDING_DIMENSION
 from sqlalchemy import text
 from app.db.base import Base 
 
@@ -15,9 +16,7 @@ logger = logging.getLogger(__name__)
 # Le chemin vers votre fichier d'exemples
 EXAMPLES_FILEPATH = "app/data/vector.json"
 # La dimension des vecteurs de votre modèle.
-# Par exemple, `text-embedding-3-small` de OpenAI est 1536.
-# Adaptez cette valeur à votre modèle.
-VECTOR_DIMENSION = 384 
+VECTOR_DIMENSION = EMBEDDING_DIMENSION
 
 def setup_database_extension(db: Session):
     """S'assure que l'extension pgvector est activée."""
