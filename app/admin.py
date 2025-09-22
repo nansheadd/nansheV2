@@ -71,6 +71,8 @@ class UserAdmin(ModelView, model=User):
         User.stripe_customer_id,
         User.created_at,
         User.last_login_at,
+        User.account_deletion_requested_at,
+        User.account_deletion_scheduled_at,
     ]
     column_searchable_list = [User.username, User.email, User.stripe_customer_id]
     column_sortable_list = [User.created_at, User.last_login_at]
