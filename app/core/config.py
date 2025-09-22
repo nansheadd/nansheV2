@@ -1,7 +1,7 @@
 # Fichier: nanshe/backend/app/core/config.py (CORRIGÉ)
 from pydantic_settings import BaseSettings
 from typing import Optional, List, Union
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, field_validator
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -58,5 +58,38 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        """Ensure Postgres URLs always use the asyncpg driver.
+
+        Vercel and many managed Postgres providers still expose database URLs
+        using the legacy ``postgres://`` scheme. SQLAlchemy no longer ships the
+        ``postgres`` alias, which triggers ``NoSuchModuleError`` when the API is
+        imported on Vercel. We transparently upgrade those URLs – as well as
+        ``postgresql://`` and psycopg variants – to ``postgresql+asyncpg://`` so
+        the async engine boots correctly while keeping SQLite and other backends
+        untouched.
+        """
+
+        if not isinstance(value, str):
+            return value
+
+        if "+asyncpg" in value:
+            return value
+
+        replacements = {
+            "postgres://": "postgresql+asyncpg://",
+            "postgresql://": "postgresql+asyncpg://",
+            "postgresql+psycopg2://": "postgresql+asyncpg://",
+            "postgresql+psycopg://": "postgresql+asyncpg://",
+        }
+
+        for prefix, target in replacements.items():
+            if value.startswith(prefix):
+                return target + value[len(prefix) :]
+
+        return value
 
 settings = Settings()
