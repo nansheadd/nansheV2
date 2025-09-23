@@ -15,13 +15,14 @@ from app.models.user.user_model import User
 from app.db.session import async_engine, SessionLocal
 
 # Imports pour SQLAdmin
-from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
 from app.admin import (
     AITokenLogAdmin,
     AtomAdmin,
+    BackOfficeAdmin,
     BadgeAdmin,
     CapsuleAdmin,
+    DashboardView,
     EmailTokenAdmin,
     FeedbackAdmin,
     GranuleAdmin,
@@ -172,7 +173,13 @@ class AdminAuth(AuthenticationBackend):
         return "token" in request.session
 
 authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
-admin = Admin(app, async_engine, authentication_backend=authentication_backend, base_url="/admin")
+admin = BackOfficeAdmin(
+    app,
+    async_engine,
+    authentication_backend=authentication_backend,
+    base_url="/admin",
+)
+admin.add_view(DashboardView)
 admin.add_view(UserAdmin)
 admin.add_view(CapsuleAdmin)
 admin.add_view(GranuleAdmin)
