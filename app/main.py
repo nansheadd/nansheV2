@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,7 +59,36 @@ def _sanitize_origin(origin: str | None) -> str | None:
     return value.rstrip("/")
 
 
-def _build_cors_origins() -> list[str]:
+def _compile_origin_regex(patterns: set[str]) -> re.Pattern[str] | None:
+    valid_patterns: list[str] = []
+    for pattern in sorted(patterns):
+        candidate = pattern.strip()
+        if not candidate:
+            continue
+
+        try:
+            re.compile(candidate)
+        except re.error as exc:  # pragma: no cover - defensive logging
+            logger.warning(
+                "Regex CORS ignorée (invalide): %s (%s)",
+                candidate,
+                exc,
+            )
+            continue
+
+        valid_patterns.append(candidate)
+
+    if not valid_patterns:
+        return None
+
+    if len(valid_patterns) == 1:
+        return re.compile(valid_patterns[0])
+
+    combined = "|".join(f"(?:{pattern})" for pattern in valid_patterns)
+    return re.compile(combined)
+
+
+def _build_cors_config() -> tuple[list[str], re.Pattern[str] | None]:
     base_origins = {_sanitize_origin(o) for o in settings.BACKEND_CORS_ORIGINS}
 
     for candidate in (
@@ -75,20 +105,48 @@ def _build_cors_origins() -> list[str]:
         for origin in additional.split(","):
             base_origins.add(_sanitize_origin(origin))
 
-    cleaned = sorted({origin for origin in base_origins if origin})
-    logger.info("CORS origins configurés: %s", cleaned)
-    return cleaned
+    allow_origins = sorted({origin for origin in base_origins if origin})
+
+    regex_candidates = {
+        pattern.strip()
+        for pattern in getattr(settings, "BACKEND_CORS_ORIGIN_REGEXES", [])
+        if pattern and pattern.strip()
+    }
+
+    additional_regexes = os.getenv("ADDITIONAL_CORS_ORIGIN_REGEXES")
+    if additional_regexes:
+        for pattern in additional_regexes.split(","):
+            candidate = pattern.strip()
+            if candidate:
+                regex_candidates.add(candidate)
+
+    if any(origin and "vercel.app" in origin for origin in allow_origins):
+        regex_candidates.add(r"^https://.*\\.vercel\\.app$")
+
+    allow_origin_regex = _compile_origin_regex(regex_candidates)
+
+    logger.info("CORS origins configurés: %s", allow_origins)
+    if allow_origin_regex is not None:
+        logger.info("CORS regex configurés: %s", allow_origin_regex.pattern)
+
+    return allow_origins, allow_origin_regex
 
 
 # --- Configuration des Middlewares ---
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_build_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+cors_origins, cors_regex = _build_cors_config()
+cors_kwargs: dict[str, object] = {
+    "allow_origins": cors_origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+if cors_regex is not None:
+    cors_kwargs["allow_origin_regex"] = cors_regex
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 
 # --- Initialisation de l'Admin ---
