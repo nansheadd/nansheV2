@@ -3,7 +3,6 @@
 import json
 import logging
 import requests
-import tiktoken
 from sqlalchemy.orm import Session
 from app.models.user.user_model import User
 
@@ -36,8 +35,19 @@ class _SimpleEncoding:
         tokens = (text or "").split()
         return list(range(len(tokens)))
 
+try:  # pragma: no cover - optional dependency for precise token counting
+    import tiktoken  # type: ignore
+except ImportError:  # pragma: no cover - fallback when tiktoken is absent
+    tiktoken = None  # type: ignore
+
 
 def _load_tiktoken_encoding() -> "tiktoken.Encoding | _SimpleEncoding":
+    if tiktoken is None:
+        logger.warning(
+            "Tiktoken n'est pas installé. Utilisation d'un tokenizeur approximatif pour le comptage des jetons."
+        )
+        return _SimpleEncoding()
+
     try:
         return tiktoken.encoding_for_model("gpt-5-mini-2025-08-07")
     except Exception as exc:  # pragma: no cover - depends on network
