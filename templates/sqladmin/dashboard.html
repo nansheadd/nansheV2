@@ -1,0 +1,229 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">{{ title }}</h2>
+    <div class="page-pretitle text-muted">{{ subtitle }}</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  {% for card in summary %}
+  <div class="col-sm-6 col-xl-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <span class="avatar bg-primary text-white me-3">
+            <i class="{{ card.icon }}"></i>
+          </span>
+          <div>
+            <div class="text-uppercase text-secondary fw-semibold fs-12">{{ card.title }}</div>
+            <div class="fs-3 fw-bold">{{ card.value }}</div>
+            <div class="text-muted">{{ card.subtitle }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="col-xl-6 col-lg-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Feedbacks</h3>
+          <div class="card-subtitle text-muted">Derniers retours utilisateurs</div>
+        </div>
+        <span class="badge bg-success ms-auto">{{ feedback.approval_rate|round(1) }}% positifs</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="text-secondary text-uppercase">Total reçus</div>
+            <div class="fs-1 fw-bold">{{ feedback.total }}</div>
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">{{ feedback.pending }} en attente</div>
+            <div class="text-muted small">{{ feedback.disliked }} négatifs</div>
+          </div>
+        </div>
+        {% for item in feedback.breakdown %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span class="text-secondary">{{ item.label }}</span>
+            <span class="fw-semibold">{{ item.value }}</span>
+          </div>
+          <div class="progress progress-sm">
+            <div class="progress-bar {{ item.color }}" role="progressbar" style="width: {{ item.ratio }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if feedback.recent %}
+      <div class="table-responsive">
+        <table class="table card-table table-vcenter">
+          <thead>
+            <tr>
+              <th>Utilisateur</th>
+              <th>Contenu</th>
+              <th>Appréciation</th>
+              <th>Statut</th>
+              <th>Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in feedback.recent %}
+            <tr>
+              <td class="fw-semibold">{{ item.user }}</td>
+              <td>{{ item.content }}</td>
+              <td><span class="badge {{ item.rating_badge }}">{{ item.rating_label }}</span></td>
+              <td><span class="badge {{ item.status_badge }}">{{ item.status_label }}</span></td>
+              <td>
+                <div class="text-secondary">{{ item.reason }}</div>
+                {% if item.comment %}
+                <div class="text-muted small">{{ item.comment }}</div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body pt-0">
+        <p class="text-muted mb-0">Aucun feedback négatif récent.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-xl-6 col-lg-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Ratios des capsules</h3>
+          <div class="card-subtitle text-muted">Statuts de génération</div>
+        </div>
+        <span class="badge bg-primary ms-auto">{{ capsules.completion_rate|round(1) }}% complétées</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="text-secondary text-uppercase">Capsules</div>
+            <div class="fs-1 fw-bold">{{ capsules.total }}</div>
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">{{ capsules.pending }} en production</div>
+            <div class="text-muted small">{{ capsules.failed }} en échec</div>
+          </div>
+        </div>
+        {% for item in capsules.breakdown %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span class="text-secondary">{{ item.label }}</span>
+            <span class="fw-semibold">{{ item.value }}</span>
+          </div>
+          <div class="progress progress-sm">
+            <div class="progress-bar {{ item.color }}" role="progressbar" style="width: {{ item.ratio }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-6 col-lg-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Problèmes</h3>
+          <div class="card-subtitle text-muted">Signalements de classification</div>
+        </div>
+        <span class="badge bg-warning text-dark ms-auto">{{ problems.open }} ouverts</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="text-secondary text-uppercase">Signalements</div>
+            <div class="fs-1 fw-bold">{{ problems.total }}</div>
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">{{ problems.resolution_rate|round(1) }}% résolus</div>
+          </div>
+        </div>
+      </div>
+      {% if problems.recent %}
+      <div class="table-responsive">
+        <table class="table card-table table-vcenter">
+          <thead>
+            <tr>
+              <th>Utilisateur</th>
+              <th>Domaine</th>
+              <th>Zone</th>
+              <th>Prédiction</th>
+              <th>Extrait</th>
+              <th>Créé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issue in problems.recent %}
+            <tr>
+              <td class="fw-semibold">{{ issue.user }}</td>
+              <td>{{ issue.domain or '—' }}</td>
+              <td>{{ issue.area or '—' }}</td>
+              <td>{{ issue.predicted or '—' }}</td>
+              <td class="text-muted small">{{ issue.excerpt or '—' }}</td>
+              <td>
+                <span class="badge {{ issue.status_badge }}">{{ issue.status_label }}</span>
+                <div class="text-muted small">{{ issue.created }}</div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body pt-0">
+        <p class="text-muted mb-0">Aucun problème de classification récent.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-xl-6 col-lg-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title">Paiements</h3>
+          <div class="card-subtitle text-muted">Statuts des abonnements</div>
+        </div>
+        <span class="badge bg-success ms-auto">{{ payments.premium_rate|round(1) }}% premium</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="text-secondary text-uppercase">Utilisateurs</div>
+            <div class="fs-1 fw-bold">{{ payments.total_users }}</div>
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">{{ payments.stripe_linked }} comptes reliés Stripe</div>
+            <div class="text-muted small">{{ payments.stripe_rate|round(1) }}% de la base</div>
+          </div>
+        </div>
+        {% for item in payments.breakdown %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span class="text-secondary">{{ item.label }}</span>
+            <span class="fw-semibold">{{ item.value }}</span>
+          </div>
+          <div class="progress progress-sm">
+            <div class="progress-bar {{ item.color }}" role="progressbar" style="width: {{ item.ratio }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
