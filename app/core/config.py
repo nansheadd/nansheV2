@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "https://nanshefr-v2.vercel.app",
     ]
+    BACKEND_CORS_ORIGIN_REGEXES: List[str] = []
     RESEND_API_KEY: str
 
     FRONTEND_BASE_URL: AnyHttpUrl
