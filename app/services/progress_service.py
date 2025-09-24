@@ -1,5 +1,7 @@
 import logging
+import re
 from sqlalchemy.orm import Session
+from sqlalchemy import String, cast
 from datetime import datetime, timedelta, timezone
 from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.progress.user_activity_log_model import UserActivityLog
@@ -149,12 +151,29 @@ class ProgressService:
         if value is None:
             return None
         if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+
+            upper_value = value.upper()
+            if upper_value.endswith("UTC"):
+                value = value[: -3].rstrip() + "+00:00"
+            elif upper_value.endswith("GMT"):
+                value = value[: -3].rstrip() + "+00:00"
+            elif upper_value.endswith(" Z"):
+                value = value[: -2] + "+00:00"
+            elif value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+
+            value = re.sub(r"([+-]\d{2})(\d{2})(?!:|\d)", r"\1:\2", value)
+            if re.search(r"[+-]\d{2}$", value):
+                value += ":00"
+
             try:
-                if value.endswith('Z'):
-                    value = value[:-1] + '+00:00'
-                return datetime.fromisoformat(value)
+                parsed = datetime.fromisoformat(value)
             except ValueError:
                 return None
+            value = parsed
         if isinstance(value, datetime):
             if value.tzinfo is not None:
                 return value.astimezone(timezone.utc).replace(tzinfo=None)
@@ -164,8 +183,8 @@ class ProgressService:
     def _aggregate_activity_logs(self) -> dict:
         rows = (
             self.db.query(
-                UserActivityLog.start_time,
-                UserActivityLog.end_time,
+                cast(UserActivityLog.start_time, String).label("start_time"),
+                cast(UserActivityLog.end_time, String).label("end_time"),
                 UserActivityLog.capsule_id,
                 Capsule.title,
                 Capsule.domain,
