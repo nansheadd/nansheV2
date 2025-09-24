@@ -28,7 +28,7 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
         raise credentials_exception
 
     if token.startswith("Bearer "):
-        token = token.split(" ")[1]
+        token = token.split(" ", 1)[1]
 
     try:
         payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
@@ -59,4 +59,15 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header
+        else:
+            # Fallback vers un header ou un paramètre de requête explicite.
+            token = (
+                request.headers.get("X-Access-Token")
+                or request.query_params.get("access_token")
+            )
+
     return _decode_user_from_token(token, db)
