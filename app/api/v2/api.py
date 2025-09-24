@@ -39,3 +39,4 @@ api_router.include_router(auth_email_router.router, prefix="/auth", tags=["Auth 
 api_router.include_router(resend_webhook_router.router, tags=["Webhooks"])
 api_router.include_router(legal_router.router)
 api_router.include_router(feature_vote_router.router, prefix="/feature-polls", tags=["FeatureVotes"])
+api_router.include_router(feature_vote_router.router, prefix="/feature-votes", tags=["FeatureVotes"])

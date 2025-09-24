@@ -11,16 +11,30 @@ from app.services.feature_vote_service import FeatureVoteError, FeatureVoteServi
 router = APIRouter()
 
 
-@router.get("/current", response_model=feature_vote_schema.FeaturePollOut)
-def get_active_feature_poll(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+def _get_active_poll_payload(db: Session, current_user: User) -> feature_vote_schema.FeaturePollOut:
+    """Return the current active poll payload or raise if none exists."""
+
     service = FeatureVoteService(db=db, user=current_user)
     poll = service.get_active_poll()
     if not poll:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_active_poll")
     return service.build_poll_payload(poll)
+
+
+@router.get("", response_model=feature_vote_schema.FeaturePollOut)
+def get_active_feature_poll(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _get_active_poll_payload(db=db, current_user=current_user)
+
+
+@router.get("/current", response_model=feature_vote_schema.FeaturePollOut)
+def get_active_feature_poll_alias(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _get_active_poll_payload(db=db, current_user=current_user)
 
 
 @router.post("/{poll_id}/votes", response_model=feature_vote_schema.FeaturePollOut)
