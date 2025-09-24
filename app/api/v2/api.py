@@ -18,6 +18,7 @@ from .endpoints import (
     legal_router,
     conversation_ws,
     feature_vote_router,
+    chat_router,
 )
 
 api_router = APIRouter()
@@ -31,6 +32,7 @@ api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Caps
 api_router.include_router(notification_router.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(notification_ws.router, tags=["Notifications"])
 api_router.include_router(conversation_ws.router, tags=["Conversations"])
+api_router.include_router(chat_router.router, prefix="/chat", tags=["Chat"])
 api_router.include_router(ws_debug.router,prefix="/ws-test", tags=["WsDebug"])
 api_router.include_router(badge_router.router, prefix="/badges", tags=["Badges"])
 api_router.include_router(programming_router.router, prefix="/programming", tags=["Programming"])
