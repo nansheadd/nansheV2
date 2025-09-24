@@ -1,7 +1,8 @@
 # Fichier: nanshe/backend/app/core/config.py (CORRIGÉ)
 from pydantic_settings import BaseSettings
 from typing import Optional, List, Union
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, ValidationError, field_validator
+import sys
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -93,4 +94,40 @@ class Settings(BaseSettings):
 
         return value
 
-settings = Settings()
+def _log_settings_validation_error(exc: ValidationError) -> None:
+    """Pretty-print missing or invalid environment variables.
+
+    When the Settings model fails to instantiate (for example on Vercel when a
+    variable is missing), Pydantic raises a ValidationError.  Because the
+    exception bubbles up during module import it can be tricky to spot which
+    variable is responsible.  We explicitly log the structured error payload so
+    the information shows up in server logs before re-raising the exception.
+    """
+
+    header = "Configuration error while loading environment variables:"
+    print(header, file=sys.stderr)
+
+    try:
+        details = exc.errors()
+    except Exception:  # pragma: no cover - extremely defensive
+        details = None
+
+    if details:
+        for error in details:
+            location = ".".join(str(part) for part in error.get("loc", ()))
+            message = error.get("msg", "Unknown validation error")
+            type_name = error.get("type")
+            hint_parts = [message]
+            if type_name:
+                hint_parts.append(f"(type={type_name})")
+            hint = " ".join(hint_parts)
+            print(f"  - {location}: {hint}", file=sys.stderr)
+    else:
+        print(exc, file=sys.stderr)
+
+
+try:
+    settings = Settings()
+except ValidationError as exc:  # pragma: no cover - exercised at runtime
+    _log_settings_validation_error(exc)
+    raise
