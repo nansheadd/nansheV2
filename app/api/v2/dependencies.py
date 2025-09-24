@@ -1,6 +1,8 @@
 import logging
+import re
+from urllib.parse import unquote
 
-from fastapi import Depends, HTTPException, status, Request, WebSocket, Query
+from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 
@@ -18,17 +20,47 @@ def get_db():
     finally:
         db.close()
 
+def _normalize_token_value(raw_token: str | None) -> str | None:
+    """Return a clean JWT string extracted from various transport formats.
+
+    Tokens may reach the API through cookies, headers, or query parameters.
+    Browsers can percent-encode cookie values (``Bearer%20…``) and some
+    frontends send quoted strings. We normalise those cases and also accept
+    case-insensitive ``Bearer`` prefixes.
+    """
+
+    if raw_token is None:
+        return None
+
+    token = raw_token.strip().strip('"').strip("'")
+    if not token:
+        return None
+
+    # Convert percent-encoded sequences such as ``Bearer%20``.
+    token = unquote(token)
+
+    match = re.match(r"^(bearer|token)[\s,:]+(.+)$", token, flags=re.IGNORECASE)
+    if match:
+        token = match.group(2)
+    else:
+        parts = token.split()
+        if len(parts) >= 2 and parts[0].lower().rstrip(",") in {"bearer", "token"}:
+            token = parts[1]
+
+    token = token.strip()
+    return token or None
+
+
 def _decode_user_from_token(token: str | None, db: Session) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
     )
+
+    token = _normalize_token_value(token)
     if not token:
         log.warning("Validation échouée: Pas de token fourni.")
         raise credentials_exception
-
-    if token.startswith("Bearer "):
-        token = token.split(" ")[1]
 
     try:
         payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
@@ -58,5 +90,30 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.cookies.get("access_token")
-    return _decode_user_from_token(token, db)
+    token_sources = (
+        request.cookies.get("access_token"),
+        request.headers.get("Authorization"),
+        request.headers.get("X-Access-Token"),
+        request.headers.get("X-Auth-Token"),
+        request.query_params.get("access_token"),
+        request.query_params.get("token"),
+    )
+
+    last_unauthorized_error: HTTPException | None = None
+
+    for candidate in token_sources:
+        token = _normalize_token_value(candidate)
+        if not token:
+            continue
+
+        try:
+            return _decode_user_from_token(token, db)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            last_unauthorized_error = exc
+
+    if last_unauthorized_error is not None:
+        raise last_unauthorized_error
+
+    return _decode_user_from_token(None, db)
