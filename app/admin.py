@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import textwrap
+from datetime import datetime, timedelta, timezone, date
 from typing import Any
 
 from markupsafe import Markup
@@ -89,6 +90,27 @@ def _percentage(part: int, total: int) -> float:
     return round((part / total) * 100.0, 1)
 
 
+def _format_duration(seconds: int) -> str:
+    seconds = max(int(seconds or 0), 0)
+    days, remainder = divmod(seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days} j")
+    if hours:
+        parts.append(f"{hours} h")
+    if minutes:
+        parts.append(f"{minutes} min")
+
+    if not parts:
+        parts.append(f"{seconds} s")
+
+    # On limite l'affichage à deux unités pour garder des cartes compactes.
+    return " ".join(parts[:2])
+
+
 def _shorten(value: str | None, width: int = 90) -> str | None:
     if not value:
         return None
@@ -111,6 +133,99 @@ def _status_badge(status: str | None) -> str:
     if status in {"rejected", "failed"}:
         return "bg-danger"
     return "bg-secondary"
+
+
+def _current_streak_from_days(days: set[date], today: date) -> int:
+    if not days:
+        return 0
+
+    if today in days:
+        current_day = today
+    elif (today - timedelta(days=1)) in days:
+        current_day = today - timedelta(days=1)
+    else:
+        return 0
+
+    streak = 0
+    while current_day in days:
+        streak += 1
+        current_day -= timedelta(days=1)
+
+    return streak
+
+
+async def _compute_study_metrics(session) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    query = await session.execute(
+        select(
+            UserActivityLog.user_id,
+            UserActivityLog.start_time,
+            UserActivityLog.end_time,
+        ).where(UserActivityLog.start_time.is_not(None))
+    )
+
+    total_seconds = 0
+    total_sessions = 0
+    user_days: dict[int, set[date]] = {}
+    active_today_users: set[int] = set()
+
+    for user_id, start_time, end_time in query:
+        if user_id is None or start_time is None:
+            continue
+
+        total_sessions += 1
+
+        start_dt = start_time
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        else:
+            start_dt = start_dt.astimezone(timezone.utc)
+
+        end_dt = end_time or now
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+        else:
+            end_dt = end_dt.astimezone(timezone.utc)
+
+        if end_dt < start_dt:
+            duration = 0
+        else:
+            duration = int((end_dt - start_dt).total_seconds())
+
+        total_seconds += max(duration, 0)
+
+        activity_day = start_dt.date()
+        user_days.setdefault(user_id, set()).add(activity_day)
+
+        if start_dt >= today_start:
+            active_today_users.add(user_id)
+
+    total_seconds = int(total_seconds)
+    active_today = len(active_today_users)
+
+    today = now.date()
+    streaks: list[int] = []
+    for days in user_days.values():
+        streaks.append(_current_streak_from_days(days, today))
+
+    longest_streak = max(streaks) if streaks else 0
+    active_streak_users = sum(1 for streak in streaks if streak > 0)
+    average_streak = round(sum(streaks) / len(streaks), 1) if streaks else 0.0
+    average_session_minutes = (
+        (total_seconds / total_sessions) / 60.0 if total_sessions else 0.0
+    )
+
+    return {
+        "total_seconds": total_seconds,
+        "total_sessions": total_sessions,
+        "average_session_minutes": average_session_minutes,
+        "active_today": active_today,
+        "longest_streak": longest_streak,
+        "average_streak": average_streak,
+        "active_streak_users": active_streak_users,
+    }
 
 
 async def _collect_dashboard_metrics() -> dict[str, Any]:
@@ -182,6 +297,8 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
             users_canceled,
             users_stripe_linked,
         ) = (_safe_int(value) for value in payments_result.one())
+
+        study_stats = await _compute_study_metrics(session)
 
         feedback_rows = await session.execute(
             select(
@@ -381,6 +498,49 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
         ],
     }
 
+    avg_session_minutes = study_stats["average_session_minutes"]
+    avg_session_display = (
+        f"{avg_session_minutes:.1f} min" if study_stats["total_sessions"] else "—"
+    )
+    average_streak_value = study_stats["average_streak"]
+    if average_streak_value:
+        streak_subtitle = f"Moyenne: {average_streak_value:.1f} j"
+    else:
+        streak_subtitle = "Aucun streak en cours"
+
+    active_subtitle = "Dernières 24 h"
+    if study_stats["active_streak_users"]:
+        active_subtitle = (
+            f"Dernières 24 h • {study_stats['active_streak_users']} en streak"
+        )
+
+    study_summary = [
+        {
+            "title": "Temps d'étude total",
+            "icon": "fa-solid fa-clock-rotate-left",
+            "value": _format_duration(study_stats["total_seconds"]),
+            "subtitle": f"{study_stats['total_sessions']} sessions suivies",
+        },
+        {
+            "title": "Durée moyenne",
+            "icon": "fa-solid fa-hourglass-half",
+            "value": avg_session_display,
+            "subtitle": "par session",
+        },
+        {
+            "title": "Streak max actuel",
+            "icon": "fa-solid fa-fire",
+            "value": f"{study_stats['longest_streak']} j",
+            "subtitle": streak_subtitle,
+        },
+        {
+            "title": "Actifs (24 h)",
+            "icon": "fa-solid fa-user-clock",
+            "value": study_stats["active_today"],
+            "subtitle": active_subtitle,
+        },
+    ]
+
     summary_cards = [
         {
             "title": "Feedbacks",
@@ -409,6 +569,7 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
     ]
 
     return {
+        "study_summary": study_summary,
         "summary": summary_cards,
         "feedback": feedback_stats,
         "capsules": capsule_stats,

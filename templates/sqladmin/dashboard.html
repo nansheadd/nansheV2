@@ -10,31 +10,48 @@
 {% endblock %}
 
 {% block content %}
-  {% for card in summary %}
-  <div class="col-sm-6 col-xl-3">
-    <div class="card card-sm">
-      <div class="card-body">
-        <div class="d-flex align-items-center">
-          <span class="avatar bg-primary text-white me-3">
-            <i class="{{ card.icon }}"></i>
-          </span>
-          <div>
-            <div class="text-uppercase text-secondary fw-semibold fs-12">{{ card.title }}</div>
-            <div class="fs-3 fw-bold">{{ card.value }}</div>
-            <div class="text-muted">{{ card.subtitle }}</div>
+  <div class="row g-4">
+    {% set sections = [
+      {"cards": study_summary, "title": "Engagement d'étude", "subtitle": "Streaks & temps"},
+      {"cards": summary, "title": "Vue d'ensemble", "subtitle": "Contenus & retours"}
+    ] %}
+    {% for section in sections %}
+    {% if section.cards %}
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h3 class="mb-0">{{ section.title }}</h3>
+        <span class="text-muted small">{{ section.subtitle }}</span>
+      </div>
+      <div class="row g-3">
+        {% for card in section.cards %}
+        <div class="col-sm-6 col-xl-3">
+          <div class="card card-sm h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center">
+                <span class="avatar bg-primary text-white me-3">
+                  <i class="{{ card.icon }}"></i>
+                </span>
+                <div>
+                  <div class="text-uppercase text-secondary fw-semibold fs-12">{{ card.title }}</div>
+                  <div class="fs-3 fw-bold">{{ card.value }}</div>
+                  <div class="text-muted">{{ card.subtitle or '' }}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+        {% endfor %}
       </div>
     </div>
-  </div>
-  {% endfor %}
+    {% endif %}
+    {% endfor %}
 
-  <div class="col-xl-6 col-lg-12">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Feedbacks</h3>
-          <div class="card-subtitle text-muted">Derniers retours utilisateurs</div>
+    <div class="col-xl-6 col-lg-12">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">Feedbacks</h3>
+            <div class="card-subtitle text-muted">Derniers retours utilisateurs</div>
         </div>
         <span class="badge bg-success ms-auto">{{ feedback.approval_rate|round(1) }}% positifs</span>
       </div>
@@ -97,14 +114,14 @@
       </div>
       {% endif %}
     </div>
-  </div>
+    </div>
 
-  <div class="col-xl-6 col-lg-12">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Ratios des capsules</h3>
-          <div class="card-subtitle text-muted">Statuts de génération</div>
+    <div class="col-xl-6 col-lg-12">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">Ratios des capsules</h3>
+            <div class="card-subtitle text-muted">Statuts de génération</div>
         </div>
         <span class="badge bg-primary ms-auto">{{ capsules.completion_rate|round(1) }}% complétées</span>
       </div>
@@ -132,14 +149,14 @@
         {% endfor %}
       </div>
     </div>
-  </div>
+    </div>
 
-  <div class="col-xl-6 col-lg-12">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Problèmes</h3>
-          <div class="card-subtitle text-muted">Signalements de classification</div>
+    <div class="col-xl-6 col-lg-12">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">Problèmes</h3>
+            <div class="card-subtitle text-muted">Signalements de classification</div>
         </div>
         <span class="badge bg-warning text-dark ms-auto">{{ problems.open }} ouverts</span>
       </div>
@@ -190,14 +207,14 @@
       </div>
       {% endif %}
     </div>
-  </div>
+    </div>
 
-  <div class="col-xl-6 col-lg-12">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">Paiements</h3>
-          <div class="card-subtitle text-muted">Statuts des abonnements</div>
+    <div class="col-xl-6 col-lg-12">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">Paiements</h3>
+            <div class="card-subtitle text-muted">Statuts des abonnements</div>
         </div>
         <span class="badge bg-success ms-auto">{{ payments.premium_rate|round(1) }}% premium</span>
       </div>
@@ -224,6 +241,7 @@
         </div>
         {% endfor %}
       </div>
+    </div>
     </div>
   </div>
 {% endblock %}
