@@ -36,10 +36,6 @@ from app.admin import (
     UserCapsuleProgressAdmin,
 )
 
-# --- NOUVEL IMPORT ---
-from sqlalchemy import text
-# ---------------------
-
 # --- Configuration du logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -203,10 +199,6 @@ app.include_router(api_router, prefix="/api/v2")
 async def startup():
     logger.info("Vérification et création des tables de la base de données...")
     async with async_engine.begin() as conn:
-        # --- NOUVEAU BLOC ---
-        # On s'assure que l'extension pgvector est activée
-        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
-        # ---------------------
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Les tables de la base de données sont prêtes.")
 

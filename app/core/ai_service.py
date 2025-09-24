@@ -18,7 +18,12 @@ from typing import List, Dict, Any, Optional
 from app.core.config import settings
 from app.core import prompt_manager
 from app.utils.json_utils import safe_json_loads  # <-- util JSON robuste
-from app.core.embeddings import get_text_embedding as _compute_text_embedding
+from app.core.embeddings import (
+    cosine_similarity,
+    ensure_dimension,
+    get_text_embedding as _compute_text_embedding,
+    normalize_vector,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +70,34 @@ def _load_tiktoken_encoding() -> "tiktoken.Encoding | _SimpleEncoding":
 encoding = _load_tiktoken_encoding()
 
 def _call_ai_with_rag_examples(db: Session, user: User, user_prompt: str, system_prompt_template: str, feature_name: str, example_type: str, model_choice: str, prompt_variables: dict) -> Dict[str, Any]:
-    prompt_embedding = get_text_embedding(user_prompt)
-    similar_examples = db.query(GoldenExample.content).filter(GoldenExample.example_type == example_type).order_by(GoldenExample.embedding.l2_distance(prompt_embedding)).limit(3).all()
-    rag_examples = "\n\n".join([ex[0] for ex in similar_examples])
+    prompt_embedding = normalize_vector(get_text_embedding(user_prompt))
+
+    rag_chunks: list[str] = []
+    if any(prompt_embedding):
+        candidates = (
+            db.query(GoldenExample)
+            .filter(GoldenExample.example_type == example_type)
+            .all()
+        )
+
+        scored: list[tuple[GoldenExample, float]] = []
+        for example in candidates:
+            raw_embedding = example.embedding or []
+            if not raw_embedding:
+                continue
+
+            aligned = normalize_vector(ensure_dimension(raw_embedding, len(prompt_embedding)))
+            similarity = cosine_similarity(prompt_embedding, aligned)
+            if similarity <= 0:
+                continue
+            scored.append((example, similarity))
+
+        top_examples = sorted(scored, key=lambda item: item[1], reverse=True)[:3]
+        for example, _ in top_examples:
+            if isinstance(example.content, str) and example.content.strip():
+                rag_chunks.append(example.content.strip())
+
+    rag_examples = "\n\n".join(rag_chunks)
     final_system_prompt = prompt_manager.get_prompt(system_prompt_template, rag_examples=rag_examples, ensure_json=True, **prompt_variables)
     return call_ai_and_log(db=db, user=user, model_choice=model_choice, system_prompt=final_system_prompt, user_prompt=user_prompt, feature_name=feature_name)
 

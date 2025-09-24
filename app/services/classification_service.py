@@ -1,4 +1,4 @@
-"""Utilities for classifying user input against the pgvector store."""
+"""Utilities for classifying user input against the vector store."""
 
 from __future__ import annotations
 

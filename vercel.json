@@ -2,8 +2,7 @@
   "functions": {
     "api/index.py": {
       "runtime": "@vercel/python@5.0.5",
-      "maxDuration": 15,
-      "memory": 1024
+      "maxDuration": 15
     }
   },
   "routes": [

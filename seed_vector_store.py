@@ -6,8 +6,6 @@ from app.db.session import SessionLocal
 from app.models.analytics.vector_store_model import VectorStore
 from app.core.ai_service import get_text_embedding
 from app.core.embeddings import EMBEDDING_DIMENSION
-from sqlalchemy import text
-from app.db.base import Base 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,15 +17,10 @@ EXAMPLES_FILEPATH = "app/data/vector.json"
 VECTOR_DIMENSION = EMBEDDING_DIMENSION
 
 def setup_database_extension(db: Session):
-    """S'assure que l'extension pgvector est activée."""
-    try:
-        db.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        db.commit()
-        logger.info("L'extension 'vector' de PostgreSQL est activée.")
-    except Exception as e:
-        logger.error(f"Impossible d'activer l'extension 'vector'. Assurez-vous qu'elle est installée. Erreur: {e}")
-        db.rollback()
-        raise
+    """Compatibilité ascendante : plus nécessaire avec le stockage JSON."""
+    logger.info(
+        "Stockage des embeddings via JSONB : aucune extension 'vector' n'est requise."
+    )
 
 def clear_vector_store(db: Session):
     """Vide la table vector_store pour éviter les doublons lors du re-peuplement."""
