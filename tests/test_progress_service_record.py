@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from app.services.progress_service import ProgressService, calculate_capsule_xp_distribution
 from app.models.capsule.utility_models import UserCapsuleProgress
@@ -72,3 +73,41 @@ def test_get_user_stats_breakdown(db_session):
     assert stats["total_sessions"] >= 1
     assert stats["breakdown"]["by_domain"], "Expected domain breakdown to be populated"
     assert stats["breakdown"]["by_domain"][0]["domain"] == capsule.domain
+
+
+def test_get_user_stats_handles_legacy_utc_strings(db_session):
+    user = create_user(db_session, username="legacy", email="legacy@example.com")
+    capsule, molecule, lesson_atom, _ = create_capsule_graph(db_session, user.id)
+
+    end_time = datetime.utcnow() - timedelta(minutes=5)
+    start_time = end_time - timedelta(minutes=30)
+
+    log = UserActivityLog(
+        user_id=user.id,
+        capsule_id=capsule.id,
+        atom_id=lesson_atom.id,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    db_session.execute(
+        text(
+            "UPDATE user_activity_logs SET start_time = :start_value, end_time = :end_value WHERE id = :log_id"
+        ),
+        {
+            "start_value": start_time.strftime("%Y-%m-%d %H:%M:%S") + " UTC",
+            "end_value": end_time.strftime("%Y-%m-%d %H:%M:%S") + " UTC",
+            "log_id": log.id,
+        },
+    )
+    db_session.commit()
+
+    service = ProgressService(db=db_session, user_id=user.id)
+    stats = service.get_user_stats()
+
+    expected_seconds = int((end_time - start_time).total_seconds())
+    assert stats["total_study_time_seconds"] == expected_seconds
+    assert stats["total_sessions"] == 1
+    assert stats["current_streak_days"] >= 1
