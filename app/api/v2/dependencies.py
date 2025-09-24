@@ -90,6 +90,7 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+
     token_sources = (
         request.cookies.get("access_token"),
         request.headers.get("Authorization"),
