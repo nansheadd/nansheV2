@@ -85,6 +85,10 @@ def login_for_access_token(
         secure=secure_cookie, # <-- 3. ON UTILISE NOTRE VARIABLE
         path="/"
     )
+
+    # Met à jour la date de dernière connexion pour alimenter le streak quotidien.
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
     try:
         # Badge première connexion
         badge_crud.award_badge(db, user.id, "voyageur-premiere-connexion")
