@@ -2,7 +2,7 @@ import logging
 import re
 from sqlalchemy.orm import Session
 from sqlalchemy import String, cast
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from app.models.capsule.utility_models import UserCapsuleProgress
 from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.user.user_model import User  # <-- Import the User model
@@ -372,13 +372,50 @@ class ProgressService:
     def _calculate_total_study_time(self) -> int:
         return self._get_activity_aggregates()["total_seconds"]
 
+    def _last_login_date(self) -> date | None:
+        if not self.user or not self.user.last_login_at:
+            return None
+
+        last_login = self._normalize_datetime(self.user.last_login_at)
+        if not last_login:
+            return None
+
+        return last_login.date()
+
+    def _login_streak_fallback(self) -> int:
+        last_login_date = self._last_login_date()
+        if not last_login_date:
+            return 0
+
+        today = datetime.utcnow().date()
+        if last_login_date > today:
+            return 0
+
+        # Un utilisateur ayant déjà ouvert une session doit être compté comme ayant au moins 1 jour de streak.
+        return 1
+
     def _calculate_current_streak(self, activity_days: list | None = None) -> int:
         if activity_days is None:
             activity_days = self._get_activity_aggregates()["days"]
-        if not activity_days:
-            return 0
 
-        day_set = {day for day in activity_days}
+        fallback_streak = self._login_streak_fallback()
+        if not activity_days:
+            return fallback_streak
+
+        day_set: set[date] = set()
+        for day in activity_days:
+            if isinstance(day, datetime):
+                day_set.add(day.date())
+            else:
+                day_set.add(day)
+
+        last_login_date = self._last_login_date()
+        if last_login_date:
+            day_set.add(last_login_date)
+
+        if not day_set:
+            return fallback_streak
+
         today = datetime.utcnow().date()
 
         if today in day_set:
@@ -386,14 +423,14 @@ class ProgressService:
         elif (today - timedelta(days=1)) in day_set:
             current_day = today - timedelta(days=1)
         else:
-            return 0
+            return fallback_streak
 
         streak = 0
         while current_day in day_set:
             streak += 1
             current_day -= timedelta(days=1)
 
-        return streak
+        return max(streak, fallback_streak)
     
     def record_atom_completion(self, atom_id: int) -> UserCapsuleProgress:
         """

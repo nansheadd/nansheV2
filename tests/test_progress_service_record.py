@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
@@ -111,3 +111,41 @@ def test_get_user_stats_handles_legacy_utc_strings(db_session):
     assert stats["total_study_time_seconds"] == expected_seconds
     assert stats["total_sessions"] == 1
     assert stats["current_streak_days"] >= 1
+
+
+def test_get_user_stats_ensures_minimum_streak_for_logged_in_user(db_session):
+    user = create_user(db_session, username="fallback", email="fallback@example.com")
+    user.last_login_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    service = ProgressService(db=db_session, user_id=user.id)
+    stats = service.get_user_stats()
+
+    assert stats["total_sessions"] == 0
+    assert stats["current_streak_days"] == 1
+
+
+def test_streak_uses_last_login_when_activity_is_old(db_session):
+    user = create_user(db_session, username="ancient", email="ancient@example.com")
+    capsule, molecule, lesson_atom, _ = create_capsule_graph(db_session, user.id)
+
+    old_start = datetime.utcnow() - timedelta(days=5, minutes=45)
+    old_end = datetime.utcnow() - timedelta(days=5, minutes=15)
+    log = UserActivityLog(
+        user_id=user.id,
+        capsule_id=capsule.id,
+        atom_id=lesson_atom.id,
+        start_time=old_start,
+        end_time=old_end,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    service = ProgressService(db=db_session, user_id=user.id)
+    stats = service.get_user_stats()
+
+    assert stats["total_sessions"] == 1
+    assert stats["current_streak_days"] == 1
