@@ -205,7 +205,7 @@ async def startup():
     logger.info("✅ Les tables de la base de données sont prêtes.")
 
     # --- Création de l'administrateur par défaut ---
-    default_admin_identifier = "nanshe@admin"
+    default_admin_identifier = "nanshe@admin.com"
     default_admin_password = "password"
 
     with SessionLocal() as session:
