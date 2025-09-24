@@ -10,7 +10,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
 from app.db.base_class import Base
 from app.api.v2.api import api_router
-from app.core.security import verify_password
+from sqlalchemy import or_
+
+from app.core.security import verify_password, get_password_hash
 from app.models.user.user_model import User
 from app.db.session import async_engine, SessionLocal
 
@@ -201,6 +203,34 @@ async def startup():
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Les tables de la base de données sont prêtes.")
+
+    # --- Création de l'administrateur par défaut ---
+    default_admin_identifier = "nanshe@admin"
+    default_admin_password = "password"
+
+    with SessionLocal() as session:
+        admin_user = session.query(User).filter(
+            or_(
+                User.email == default_admin_identifier,
+                User.username == default_admin_identifier,
+            )
+        ).first()
+
+        if admin_user is None:
+            logger.info("Création de l'administrateur par défaut '%s'.", default_admin_identifier)
+            admin_user = User(
+                username=default_admin_identifier,
+                email=default_admin_identifier,
+                hashed_password=get_password_hash(default_admin_password),
+                is_superuser=True,
+                is_active=True,
+                is_email_verified=True,
+            )
+            session.add(admin_user)
+            session.commit()
+            logger.info("✅ Administrateur par défaut créé.")
+        else:
+            logger.info("Administrateur par défaut déjà présent.")
 
 # --- Route Racine ---
 @app.get("/")
