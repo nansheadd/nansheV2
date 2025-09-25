@@ -2,9 +2,9 @@ import logging
 import re
 from urllib.parse import unquote
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, Request, WebSocket, status
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
+from jose import JWTError, ExpiredSignatureError, jwt
 
 from app.db.session import SessionLocal
 from app.core import security
@@ -68,8 +68,11 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
         if user_id_str is None:
             log.warning("Validation échouée: Le token ne contient pas de 'sub'.")
             raise credentials_exception
-        
+
         user_id = int(user_id_str)
+    except ExpiredSignatureError:
+        log.warning("Validation échouée: Le token a expiré.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_expired")
     except (JWTError, ValueError, TypeError):
         log.warning("Validation échouée: Le token est invalide ou mal formé.")
         raise credentials_exception
@@ -118,3 +121,51 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise last_unauthorized_error
 
     return _decode_user_from_token(None, db)
+
+
+def _iter_websocket_token_candidates(websocket: WebSocket) -> list[str | None]:
+    """Collect potential JWT transport formats from a WebSocket handshake."""
+
+    candidates: list[str | None] = [
+        websocket.cookies.get("access_token"),
+        websocket.cookies.get("token"),
+        websocket.headers.get("Authorization"),
+        websocket.headers.get("X-Access-Token"),
+        websocket.headers.get("X-Auth-Token"),
+        websocket.query_params.get("access_token"),
+        websocket.query_params.get("token"),
+    ]
+
+    protocol_header = websocket.headers.get("sec-websocket-protocol")
+    if protocol_header:
+        protocols = [part.strip() for part in protocol_header.split(",") if part.strip()]
+
+        if len(protocols) >= 2 and protocols[0].lower().rstrip(":") in {"bearer", "token"}:
+            candidates.append(" ".join(protocols[:2]))
+
+        candidates.extend(protocols)
+
+    return candidates
+
+
+def get_current_user_from_websocket(websocket: WebSocket, db: Session) -> User:
+    """Authenticate a ``WebSocket`` connection using the same logic as HTTP requests."""
+
+    last_unauthorized_error: HTTPException | None = None
+
+    for candidate in _iter_websocket_token_candidates(websocket):
+        token = _normalize_token_value(candidate)
+        if not token:
+            continue
+
+        try:
+            return _decode_user_from_token(token, db)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            last_unauthorized_error = exc
+
+    if last_unauthorized_error is not None:
+        raise last_unauthorized_error
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
