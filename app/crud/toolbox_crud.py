@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core import ai_service
-from app.crud import coach_energy_crud
+from app.crud import coach_conversation_crud, coach_energy_crud
 from app.models.capsule import capsule_model, granule_model, molecule_model, atom_model
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.user.user_model import User
@@ -51,6 +51,51 @@ def _extract_capsule_id(context: dict) -> int | None:
     return None
 
 
+def _extract_molecule_id(context: dict) -> int | None:
+    """Essaye d'extraire un identifiant de molécule depuis le contexte frontend."""
+
+    if not context:
+        return None
+
+    candidates = []
+    for key in ("moleculeId", "molecule_id", "moleculeid"):
+        value = context.get(key)
+        if value is not None:
+            candidates.append(value)
+
+    molecule_context = context.get("molecule")
+    if isinstance(molecule_context, dict):
+        for key in ("id", "moleculeId", "molecule_id"):
+            value = molecule_context.get(key)
+            if value is not None:
+                candidates.append(value)
+
+    params = context.get("params")
+    if isinstance(params, dict):
+        for key in ("moleculeId", "molecule_id"):
+            if key in params:
+                candidates.append(params[key])
+
+    for value in candidates:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+
+    path = context.get("path")
+    if isinstance(path, str):
+        match = re.search(r"molecule/(\d+)", path)
+        if not match:
+            match = re.search(r"moleculeId=(\d+)", path)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                pass
+
+    return None
+
+
 def _format_recent_errors(errors: list[UserAnswerLog]) -> str:
     if not errors:
         return "Aucune erreur récente détectée."
@@ -78,6 +123,12 @@ def ask_coach(
 
     capsule_id = _extract_capsule_id(context or {})
     capsule = db.get(capsule_model.Capsule, capsule_id) if capsule_id else None
+
+    molecule_id = _extract_molecule_id(context or {})
+    molecule = db.get(molecule_model.Molecule, molecule_id) if molecule_id else None
+    if molecule and capsule is None:
+        granule = getattr(molecule, "granule", None)
+        capsule = getattr(granule, "capsule", None)
 
     weak_topics: list[str] = []
     recent_errors: list[UserAnswerLog] = []
@@ -127,13 +178,13 @@ def ask_coach(
                     .filter_by(capsule_id=capsule.id, order=int(granule_order))
                     .first()
                 )
-                molecule = (
+                focus_molecule = (
                     db.query(molecule_model.Molecule)
                     .filter_by(granule_id=granule.id if granule else None, order=int(molecule_order))
                     .first()
                 )
-                if molecule:
-                    focus_description = f"Travail en cours sur la leçon '{molecule.title}'."
+                if focus_molecule:
+                    focus_description = f"Travail en cours sur la leçon '{focus_molecule.title}'."
             except (ValueError, TypeError):
                 logger.debug("Impossible d'interpréter granule/molecule depuis le contexte: %s", context)
 
@@ -185,6 +236,33 @@ Réponds exclusivement en JSON avec la structure suivante :
 }}
 """.strip()
 
+    location, location_capsule_id, location_molecule_id = coach_conversation_crud.determine_location(
+        capsule=capsule,
+        molecule=molecule,
+    )
+    thread = coach_conversation_crud.get_or_create_thread(
+        db,
+        user,
+        location=location,
+        capsule_id=location_capsule_id,
+        molecule_id=location_molecule_id,
+    )
+
+    user_message_content = message.strip()
+    if not user_message_content:
+        user_message_content = message
+
+    coach_conversation_crud.append_user_message(
+        db,
+        thread,
+        content=user_message_content,
+        payload={
+            "context": context,
+            "quick_action": quick_action,
+            "selection": selection,
+        },
+    )
+
     try:
         response_data = ai_service.call_ai_and_log(
             db=db,
@@ -195,10 +273,24 @@ Réponds exclusivement en JSON avec la structure suivante :
             feature_name="coach_ia",
         )
         response_text = response_data.get("response", json.dumps(response_data, ensure_ascii=False))
-        return {"response": response_text, "energy": energy_status}
+        coach_conversation_crud.append_coach_message(
+            db,
+            thread,
+            content=response_text,
+            payload={"raw_response": response_data},
+        )
+        return {"response": response_text, "energy": energy_status, "thread_id": thread.id}
     except Exception as exc:
         logger.error("Coach IA indisponible: %s", exc, exc_info=True)
+        fallback = "Désolé, je ne parviens pas à répondre pour le moment."
+        coach_conversation_crud.append_coach_message(
+            db,
+            thread,
+            content=fallback,
+            payload={"error": str(exc)},
+        )
         return {
-            "response": "Désolé, je ne parviens pas à répondre pour le moment.",
+            "response": fallback,
             "energy": energy_status,
+            "thread_id": thread.id,
         }
