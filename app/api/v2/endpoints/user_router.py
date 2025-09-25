@@ -60,45 +60,38 @@ def login_for_access_token(
 ):
     user = user_crud.get_user_by_username(db, username=form_data.username)
     if not user or not security.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
-
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="inactive_user")
-
+        raise HTTPException(status_code=403, detail="inactive_user")
     if user.account_deletion_requested_at is not None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_deletion_scheduled")
+        raise HTTPException(status_code=403, detail="account_deletion_scheduled")
 
-    access_token = security.create_access_token(subject=user.id)
+    # ⚠️ IMPORTANT: create_access_token doit insérer {"sub": "<user_id_str>"}
+    access_token = security.create_access_token(subject=str(user.id))
 
-    # 2. ON DÉFINIT LE PARAMÈTRE SECURE DYNAMIQUEMENT
-    # Il sera True si settings.ENVIRONMENT == "production", sinon False.
+    # Cookie cross-site pour front/back sur domaines différents (Vercel)
     secure_cookie = settings.ENVIRONMENT == "production"
-
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {access_token}",
+        value=access_token,   # JWT brut (pas "Bearer ")
         httponly=True,
-        samesite="lax",
-        secure=secure_cookie, # <-- 3. ON UTILISE NOTRE VARIABLE
-        path="/"
+        samesite="none",      # <- crucial pour cross-site
+        secure=secure_cookie, # <- True en prod
+        path="/",
     )
 
-    # Met à jour la date de dernière connexion pour alimenter le streak quotidien.
-    user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
-    try:
-        # Badge première connexion
-        badge_crud.award_badge(db, user.id, "voyageur-premiere-connexion")
-    except Exception:
-        pass
-    return {"message": "Login successful"}
+    # Tu renvoies aussi le token dans le body pour le fallback localStorage (dev)
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie(key="access_token")
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="none",
+        secure=settings.ENVIRONMENT == "production",
+    )
     return {"message": "Logout successful"}
 
 @router.get("/me", response_model=user_schema.User)
