@@ -26,6 +26,12 @@ from app.models.analytics.feedback_model import (
     ContentFeedbackDetail,
 )
 from app.models.analytics.classification_feedback_model import ClassificationFeedback
+from app.models.analytics.vector_store_model import VectorStore
+from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
+
+# SQLite used in tests does not support PostgreSQL's JSONB type.
+VectorStore.__table__.c.embedding.type = SQLiteJSON()
+VectorStore.__table__.c.metadata_.type = SQLiteJSON()
 from app.models.capsule.atom_model import Atom
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.granule_model import Granule
@@ -73,6 +79,7 @@ TABLES = [
     FeaturePoll.__table__,
     FeaturePollOption.__table__,
     FeaturePollVote.__table__,
+    VectorStore.__table__,
 ]
 
 
