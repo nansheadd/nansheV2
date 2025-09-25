@@ -126,6 +126,18 @@ async def update_me(
             current_user.full_name = new_full_name
             has_changes = True
 
+    if payload.active_title is not None:
+        new_active_title = payload.active_title.strip() or None
+        if new_active_title != current_user.active_title:
+            current_user.active_title = new_active_title
+            has_changes = True
+
+    if payload.profile_border_color is not None:
+        new_border_color = payload.profile_border_color.strip() or None
+        if new_border_color != current_user.profile_border_color:
+            current_user.profile_border_color = new_border_color
+            has_changes = True
+
     if payload.username is not None:
         new_username = payload.username.strip()
         if not new_username:

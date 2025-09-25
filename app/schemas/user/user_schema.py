@@ -23,6 +23,8 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     full_name: Optional[str] = None
+    active_title: Optional[str] = None
+    profile_border_color: Optional[str] = None
 
 # --- Schéma pour la Réponse de l'API ---
 # C'est la forme des données utilisateur que l'API renverra.
