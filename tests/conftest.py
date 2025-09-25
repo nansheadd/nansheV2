@@ -46,6 +46,10 @@ from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
 from app.models.toolbox.coach_energy_model import CoachEnergyWallet
+from app.models.toolbox.coach_conversation_model import (
+    CoachConversationMessage,
+    CoachConversationThread,
+)
 from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption, FeaturePollVote
 from app.models.email.email_token import EmailToken
 
@@ -72,6 +76,8 @@ TABLES = [
     ContentFeedback.__table__,
     ContentFeedbackDetail.__table__,
     CoachEnergyWallet.__table__,
+    CoachConversationThread.__table__,
+    CoachConversationMessage.__table__,
     EmailToken.__table__,
     Notification.__table__,
     Badge.__table__,
