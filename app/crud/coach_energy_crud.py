@@ -36,6 +36,15 @@ def _now(override: datetime | None = None) -> datetime:
     return override or datetime.now(timezone.utc)
 
 
+def _ensure_aware(value: datetime, reference: datetime) -> datetime:
+    """Return a timezone-aware datetime, defaulting to the reference tz when needed."""
+
+    if value.tzinfo is not None:
+        return value
+    tzinfo = reference.tzinfo or timezone.utc
+    return value.replace(tzinfo=tzinfo)
+
+
 def _is_unlimited(user: User) -> bool:
     return user.is_superuser or user.subscription_status == SubscriptionStatus.PREMIUM
 
@@ -62,7 +71,8 @@ def _regenerate(wallet: CoachEnergyWallet, now: datetime) -> None:
         wallet.current_energy = max(wallet.current_energy, 0.0)
         return
 
-    elapsed = max((now - wallet.updated_at).total_seconds(), 0.0)
+    updated_at = _ensure_aware(wallet.updated_at, now)
+    elapsed = max((now - updated_at).total_seconds(), 0.0)
     if elapsed <= 0:
         return
 

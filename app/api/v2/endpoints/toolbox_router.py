@@ -3,8 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
-from app.crud import toolbox_crud, toolbox_notes_crud, coach_energy_crud
+from app.crud import (
+    coach_conversation_crud,
+    coach_energy_crud,
+    toolbox_crud,
+    toolbox_notes_crud,
+)
 from app.schemas.toolbox import (
+    CoachConversationMessageOut,
+    CoachConversationThreadOut,
     MoleculeNoteCreate,
     MoleculeNoteOut,
     MoleculeNoteUpdate,
@@ -53,6 +60,45 @@ def get_coach_energy(
     current_user: User = Depends(get_current_user),
 ):
     return coach_energy_crud.get_energy_status(db, current_user)
+
+
+@router.get("/coach/conversations", response_model=list[CoachConversationThreadOut])
+def list_coach_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CoachConversationThreadOut]:
+    threads = coach_conversation_crud.list_threads_for_user(db, current_user)
+    stats = coach_conversation_crud.fetch_thread_statistics(db, (thread.id for thread in threads))
+
+    result: list[CoachConversationThreadOut] = []
+    for thread in threads:
+        message_count, last_message_at = stats.get(thread.id, (0, None))
+        result.append(
+            CoachConversationThreadOut.from_thread(
+                thread,
+                message_count=message_count,
+                last_message_at=last_message_at,
+            )
+        )
+    return result
+
+
+@router.get(
+    "/coach/conversations/{thread_id}/messages",
+    response_model=list[CoachConversationMessageOut],
+)
+def list_coach_conversation_messages(
+    thread_id: int,
+    limit: int | None = Query(default=None, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CoachConversationMessageOut]:
+    thread = coach_conversation_crud.get_thread_for_user(db, current_user, thread_id)
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation introuvable")
+
+    messages = coach_conversation_crud.list_messages_for_thread(db, thread, limit=limit)
+    return messages
 
 
 def _serialize_note(note: MoleculeNote) -> MoleculeNoteOut:
