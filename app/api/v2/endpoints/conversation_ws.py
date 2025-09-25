@@ -8,12 +8,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
-from jose import ExpiredSignatureError
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.v2.dependencies import _decode_user_from_token, get_db
+from app.api.v2.dependencies import get_current_user_from_websocket, get_db
 from app.conversations import (
     ChannelDescriptor,
     ConversationMessage,
@@ -35,19 +34,13 @@ async def conversations_ws(
 ) -> None:
     """Authenticate the websocket, attach it to the right channel and stream messages."""
 
-    token = websocket.cookies.get("access_token") or websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
     try:
-        current_user = _decode_user_from_token(token, db)
-    except ExpiredSignatureError:
-        log.warning("Conversation WS refused: token expired")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-    except Exception:
-        log.warning("Conversation WS refused: token invalid")
+        current_user = get_current_user_from_websocket(websocket, db)
+    except HTTPException as exc:
+        if exc.detail == "token_expired":
+            log.warning("Conversation WS refused: token expired")
+        else:
+            log.warning("Conversation WS refused: token invalid (%s)", exc.detail)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
