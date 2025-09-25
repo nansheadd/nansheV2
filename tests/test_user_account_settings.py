@@ -43,6 +43,36 @@ async def test_update_me_updates_core_fields(monkeypatch, db_session):
 
 
 @pytest.mark.asyncio
+async def test_update_me_updates_profile_customization(db_session):
+    user = create_user(
+        db_session,
+        username="profiled",
+        email="profiled@example.com",
+        active_title=None,
+        profile_border_color=None,
+    )
+
+    payload = UserUpdate(
+        active_title="  Explorateur  ",
+        profile_border_color="  #123abc  ",
+    )
+
+    request = SimpleNamespace(headers={})
+
+    updated_user = await user_router.update_me(payload, request, db_session, user)
+
+    assert updated_user.active_title == "Explorateur"
+    assert updated_user.profile_border_color == "#123abc"
+
+    # Mettre à jour une deuxième fois pour vérifier la suppression
+    payload = UserUpdate(active_title="  ", profile_border_color="  ")
+    updated_user = await user_router.update_me(payload, request, db_session, user)
+
+    assert updated_user.active_title is None
+    assert updated_user.profile_border_color is None
+
+
+@pytest.mark.asyncio
 async def test_update_me_prevents_duplicate_email(monkeypatch, db_session):
     user = create_user(
         db_session,
