@@ -684,7 +684,6 @@ class CapsuleAdmin(ModelView, model=Capsule):
     }
     can_export = True
     if _CAPSULE_PLAN_ATTR is not None:
-        column_exclude_list = [_CAPSULE_PLAN_ATTR]
         column_formatters_detail = {
             _CAPSULE_PLAN_ATTR: lambda m, _: _json_full(getattr(m, "learning_plan_json", None)),
         }
