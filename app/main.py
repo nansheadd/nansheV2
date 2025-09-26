@@ -15,6 +15,7 @@ from sqlalchemy import or_
 from app.core.security import verify_password, get_password_hash
 from app.models.user.user_model import User
 from app.db.session import async_engine, SessionLocal
+from app.services.supabase_vector_sync import ensure_supabase_vector_sync
 
 # Imports pour SQLAdmin
 from sqladmin.authentication import AuthenticationBackend
@@ -242,6 +243,8 @@ async def startup():
             logger.info("✅ Administrateur par défaut créé.")
         else:
             logger.info("Administrateur par défaut déjà présent.")
+
+    await ensure_supabase_vector_sync()
 
 # --- Route Racine ---
 @app.get("/")

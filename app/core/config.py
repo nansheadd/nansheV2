@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     EMAIL_RESET_TTL_MIN: int = 30
     RESEND_WEBHOOK_SECRET: str | None = None
 
+    # --- Supabase Vector Store configuration ---
+    SUPABASE_URL: AnyHttpUrl | None = None
+    SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    SUPABASE_VECTOR_TABLE: str = "vector_store"
+    SUPABASE_VECTOR_SCHEMA: str = "public"
+    SUPABASE_VECTOR_SOURCE_FILE: str = "app/data/training_data.jsonl"
+    SUPABASE_VECTOR_ON_CONFLICT: str = "chunk_text"
+    SUPABASE_VECTOR_BATCH_SIZE: int = 64
+    SUPABASE_VECTOR_SYNC_ON_STARTUP: bool = True
+
 
     MAIL_PROVIDER: str = "resend"  # "sendgrid" | "brevo_smtp" | "resend"
     EMAIL_FROM: str
