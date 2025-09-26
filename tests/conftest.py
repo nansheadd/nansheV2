@@ -51,6 +51,7 @@ from app.models.toolbox.coach_conversation_model import (
     CoachConversationMessage,
     CoachConversationThread,
 )
+from app.models.toolbox.molecule_note_model import MoleculeNote
 from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption, FeaturePollVote
 from app.models.email.email_token import EmailToken
 
@@ -80,6 +81,7 @@ TABLES = [
     CoachEnergyWallet.__table__,
     CoachConversationThread.__table__,
     CoachConversationMessage.__table__,
+    MoleculeNote.__table__,
     EmailToken.__table__,
     Notification.__table__,
     Badge.__table__,

@@ -12,7 +12,7 @@ class MoleculeNoteBase(BaseModel):
 
 
 class MoleculeNoteCreate(MoleculeNoteBase):
-    molecule_id: int = Field(..., gt=0)
+    molecule_id: int | None = Field(None, gt=0)
 
 
 class MoleculeNoteUpdate(BaseModel):
@@ -24,7 +24,7 @@ class MoleculeNoteOut(BaseModel):
     id: int
     title: str
     content: str
-    molecule_id: int
+    molecule_id: int | None
     molecule_title: Optional[str]
     capsule_id: Optional[int]
     capsule_title: Optional[str]

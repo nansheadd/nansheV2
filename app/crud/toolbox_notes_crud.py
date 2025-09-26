@@ -21,7 +21,7 @@ def list_notes(db: Session, user: User, molecule_id: int | None = None) -> list[
         .filter(MoleculeNote.user_id == user.id)
         .order_by(MoleculeNote.updated_at.desc())
     )
-    if molecule_id:
+    if molecule_id is not None:
         query = query.filter(MoleculeNote.molecule_id == molecule_id)
     return query.all()
 
@@ -30,20 +30,24 @@ def create_note(
     db: Session,
     user: User,
     *,
-    molecule_id: int,
+    molecule_id: int | None,
     title: str,
     content: str,
 ) -> MoleculeNote:
-    molecule = db.get(Molecule, molecule_id)
-    if not molecule:
-        raise ValueError("Molecule not found")
+    molecule = None
+    if molecule_id is not None:
+        molecule = db.get(Molecule, molecule_id)
+        if not molecule:
+            raise ValueError("Molecule not found")
 
     note = MoleculeNote(
         user_id=user.id,
-        molecule_id=molecule.id,
+        molecule_id=molecule.id if molecule else None,
         title=title.strip() or "Sans titre",
         content=content,
     )
+    if molecule is not None:
+        note.molecule = molecule
     db.add(note)
     db.commit()
     db.refresh(note)
