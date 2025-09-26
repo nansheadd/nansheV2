@@ -19,6 +19,9 @@ from .endpoints import (
     conversation_ws,
     feature_vote_router,
     chat_router,
+    learning_router,
+    journal_router,
+    srs_router,
 )
 
 api_router = APIRouter()
@@ -26,6 +29,9 @@ api_router = APIRouter()
 api_router.include_router(user_router.router, prefix="/users", tags=["Users"])
 api_router.include_router(progress_router.router, prefix="/progress", tags=["Progress"])
 api_router.include_router(toolbox_router.router, prefix="/toolbox", tags=["Toolbox"])
+api_router.include_router(journal_router.router, prefix="/journal", tags=["Journal"])
+api_router.include_router(learning_router.router, prefix="/learning", tags=["Learning"])
+api_router.include_router(srs_router.router, prefix="/srs", tags=["Learning"])
 api_router.include_router(feedback_router.router, prefix="/feedback", tags=["Feedback"])
 api_router.include_router(nlp_router.router, prefix="/nlp", tags=["Nlp"])
 api_router.include_router(capsule_router.router, prefix="/capsules", tags=["Capsule"])
