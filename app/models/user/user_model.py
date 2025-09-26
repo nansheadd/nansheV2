@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ..capsule.language_roadmap_model import LanguageRoadmap
     from ..progress.user_answer_log_model import UserAnswerLog
     from ..progress.user_activity_log_model import UserActivityLog
+    from ..progress.user_molecule_review_model import UserMoleculeReview
     from ..analytics.classification_feedback_model import ClassificationFeedback
     from ..toolbox.coach_energy_model import CoachEnergyWallet
     from ..toolbox.coach_conversation_model import CoachConversationThread
@@ -77,6 +78,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
     coach_conversation_threads: Mapped[List["CoachConversationThread"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    molecule_reviews: Mapped[List["UserMoleculeReview"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     

@@ -19,6 +19,7 @@ from app.services.progress_service import ProgressService
 from app.models.user.user_model import User
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.services.services.capsule_service import CapsuleService
+from app.services.srs_service import SRSService
 
 router = APIRouter()
 
@@ -144,6 +145,7 @@ def log_user_answer(
     db.add(answer_log)
     db.flush()
 
+    srs_service = SRSService(db=db, user=current_user)
     progress_entry = (
         db.query(UserAtomProgress)
         .filter_by(user_id=current_user.id, atom_id=payload.atom_id)
@@ -165,10 +167,12 @@ def log_user_answer(
         if not progress_entry.completed_at:
             progress_entry.completed_at = datetime.utcnow()
         ProgressService(db=db, user_id=current_user.id).record_atom_completion(payload.atom_id)
+        srs_service.register_answer(atom, True)
     else:
         progress_entry.failure_count = (progress_entry.failure_count or 0) + 1
         progress_entry.status = 'failed'
         progress_entry.completed_at = None
+        srs_service.register_answer(atom, False)
 
     db.commit()
     db.refresh(progress_entry)
@@ -205,6 +209,9 @@ def reset_atom_progress(
     progress_entry.reset_count += 1
     progress_entry.last_attempt_at = datetime.utcnow()
     progress_entry.completed_at = None
+
+    srs_service = SRSService(db=db, user=current_user)
+    srs_service.register_reset(atom.molecule)
     db.commit()
 
     capsule_service = CapsuleService(db=db, user=current_user)

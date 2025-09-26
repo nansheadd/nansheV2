@@ -45,6 +45,7 @@ from app.models.progress.user_activity_log_model import UserActivityLog
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_course_progress_model import UserCourseProgress
+from app.models.progress.user_molecule_review_model import UserMoleculeReview
 from app.models.toolbox.coach_energy_model import CoachEnergyWallet
 from app.models.toolbox.coach_conversation_model import (
     CoachConversationMessage,
@@ -73,6 +74,7 @@ TABLES = [
     UserActivityLog.__table__,
     UserAnswerLog.__table__,
     UserAtomProgress.__table__,
+    UserMoleculeReview.__table__,
     ContentFeedback.__table__,
     ContentFeedbackDetail.__table__,
     CoachEnergyWallet.__table__,
