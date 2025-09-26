@@ -32,7 +32,10 @@ class Capsule(Base):
     domain: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     area: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     main_skill: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
-    
+    learning_plan_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
+
     # Correction: le nom de la colonne est 'creator_id'
     creator_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     
