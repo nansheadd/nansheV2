@@ -1,5 +1,7 @@
 # Fichier: backend/app/api/v2/endpoints/toolbox_router.py (NOUVEAU)
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import datetime
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.api.v2.dependencies import get_db, get_current_user
 from app.models.user.user_model import User
@@ -16,9 +18,10 @@ from app.schemas.toolbox import (
     MoleculeNoteOut,
     MoleculeNoteUpdate,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Dict, Any
 
+from app.models.toolbox.coach_conversation_model import CoachConversationThread
 from app.models.toolbox.molecule_note_model import MoleculeNote
 from app.api.v2.endpoints.learning_router import _build_empty_journal_response
 
@@ -30,6 +33,24 @@ class CoachRequest(BaseModel):
     history: List[Dict[str, str]]
     quick_action: str | None = None
     selection: Dict[str, Any] | None = None
+
+
+class JournalRequest(BaseModel):
+    """Payload accepted by journal endpoints for future extensibility."""
+
+    model_config = ConfigDict(extra="allow")
+
+    limit: int | None = Field(default=None, ge=1, le=50)
+
+
+def _extract_limit(limit: int | None, payload: JournalRequest | None) -> int:
+    """Return the validated limit with fallback to the default."""
+
+    if payload and payload.limit is not None:
+        return payload.limit
+    if limit is not None:
+        return limit
+    return 10
 
 @router.post("/coach")
 def handle_coach_request(
@@ -62,25 +83,80 @@ def get_coach_energy(
     return coach_energy_crud.get_energy_status(db, current_user)
 
 
+def _list_threads_with_stats(
+    db: Session,
+    current_user: User,
+) -> tuple[list[CoachConversationThread], dict[int, tuple[int, datetime | None]]]:
+    threads = coach_conversation_crud.list_threads_for_user(db, current_user)
+    stats = coach_conversation_crud.fetch_thread_statistics(db, (thread.id for thread in threads))
+    return threads, stats
+
+
+def _serialize_thread(
+    thread: CoachConversationThread,
+    stats: dict[int, tuple[int, datetime | None]],
+) -> CoachConversationThreadOut:
+    message_count, last_message_at = stats.get(thread.id, (0, None))
+    return CoachConversationThreadOut.from_thread(
+        thread,
+        message_count=message_count,
+        last_message_at=last_message_at,
+    )
+
+
 @router.get("/coach/conversations", response_model=list[CoachConversationThreadOut])
 def list_coach_conversations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CoachConversationThreadOut]:
-    threads = coach_conversation_crud.list_threads_for_user(db, current_user)
-    stats = coach_conversation_crud.fetch_thread_statistics(db, (thread.id for thread in threads))
+    threads, stats = _list_threads_with_stats(db, current_user)
+    return [_serialize_thread(thread, stats) for thread in threads]
 
-    result: list[CoachConversationThreadOut] = []
-    for thread in threads:
-        message_count, last_message_at = stats.get(thread.id, (0, None))
-        result.append(
-            CoachConversationThreadOut.from_thread(
-                thread,
-                message_count=message_count,
-                last_message_at=last_message_at,
-            )
-        )
-    return result
+
+def _latest_thread(
+    db: Session,
+    current_user: User,
+) -> CoachConversationThreadOut | None:
+    threads, stats = _list_threads_with_stats(db, current_user)
+    if not threads:
+        return None
+    return _serialize_thread(threads[0], stats)
+
+
+@router.get(
+    "/coach/conversations/current",
+    response_model=CoachConversationThreadOut | None,
+    summary="Alias of the latest coach conversation thread",
+)
+def get_current_coach_conversation(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationThreadOut | None:
+    return _latest_thread(db, current_user)
+
+
+@router.get(
+    "/coach/conversations/latest",
+    response_model=CoachConversationThreadOut | None,
+    summary="Alias of the latest coach conversation thread",
+)
+def get_latest_coach_conversation(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationThreadOut | None:
+    return _latest_thread(db, current_user)
+
+
+@router.get(
+    "/coach/conversation",
+    response_model=list[CoachConversationThreadOut],
+    summary="Legacy alias for list_coach_conversations",
+)
+def list_coach_conversation_alias(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CoachConversationThreadOut]:
+    return list_coach_conversations(db=db, current_user=current_user)
 
 
 @router.get(
@@ -186,21 +262,43 @@ def delete_note(
 
 @router.get("/journal", summary="Journal de progression (toolbox)")
 def get_toolbox_journal(
-    limit: int = Query(10, ge=1, le=50),
+    limit: int | None = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
     current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
 ) -> dict:
     """Placeholder endpoint so the frontend can fetch toolbox journal data."""
 
-    return _build_empty_journal_response(limit)
+    return _build_empty_journal_response(_extract_limit(limit, None))
+
+
+@router.post("/journal", summary="Journal de progression (toolbox)")
+def post_toolbox_journal(
+    payload: JournalRequest | None = Body(default=None),
+    db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
+) -> dict:
+    """POST variant returning the same placeholder payload as the GET route."""
+
+    return _build_empty_journal_response(_extract_limit(None, payload))
 
 
 @router.get("/journal/entries", summary="Entrées du journal (toolbox)")
 def get_toolbox_journal_entries(
-    limit: int = Query(10, ge=1, le=50),
+    limit: int | None = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
     current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
 ) -> dict:
     """Alias with the same placeholder payload as :func:`get_toolbox_journal`."""
 
-    return _build_empty_journal_response(limit)
+    return _build_empty_journal_response(_extract_limit(limit, None))
+
+
+@router.post("/journal/entries", summary="Entrées du journal (toolbox)")
+def post_toolbox_journal_entries(
+    payload: JournalRequest | None = Body(default=None),
+    db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
+) -> dict:
+    """POST alias mirroring :func:`post_toolbox_journal`."""
+
+    return _build_empty_journal_response(_extract_limit(None, payload))
