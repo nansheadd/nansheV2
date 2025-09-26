@@ -17,14 +17,35 @@ logger = logging.getLogger(__name__)
 class DBClassifier:
     """Simple cosine-similarity classifier backed by the VectorStore table."""
 
+    def __init__(self, default_threshold: float | None = None) -> None:
+        from app.core.config import settings
+
+        if default_threshold is None:
+            default_threshold = settings.DB_CLASSIFIER_DEFAULT_THRESHOLD
+
+        try:
+            self._default_threshold = float(default_threshold)
+        except (TypeError, ValueError):  # pragma: no cover - defensive branch
+            self._default_threshold = 0.0
+
+        if self._default_threshold < 0:
+            self._default_threshold = 0.0
+
+    @property
+    def default_threshold(self) -> float:
+        return self._default_threshold
+
     def classify(
         self,
         text: str,
         db: Session,
         top_k: int = 1,
-        threshold: float = 0.5,
+        threshold: float | None = None,
     ) -> List[dict]:
         logger.info("--- [DB_CLASSIFIER] Recherche des '%s' correspondances pour '%s'", top_k, text)
+
+        if threshold is None:
+            threshold = self._default_threshold
 
         input_embedding = normalize_vector(get_embedding(text))
         if not input_embedding or not any(abs(v) > 0 for v in input_embedding):

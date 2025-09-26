@@ -123,3 +123,54 @@ def test_classify_filters_below_threshold_and_invalid_embeddings(
     match = results[0]
     assert match["category"]["name"] == "top"
     assert match["confidence"] >= 0.9
+
+
+def test_classifier_uses_settings_default_threshold(monkeypatch, db_session):
+    """The default threshold should be configurable via settings."""
+
+    monkeypatch.setattr(
+        "app.core.config.settings",
+        "DB_CLASSIFIER_DEFAULT_THRESHOLD",
+        0.95,
+        raising=False,
+    )
+
+    classifier = DBClassifier()
+
+    monkeypatch.setattr(
+        "app.services.classification_service.get_embedding",
+        lambda _: [1.0, 0.0],
+    )
+
+    db_session.add(
+        VectorStore(
+            chunk_text="Orthogonal",
+            embedding=[0.0, 1.0],
+            domain="dev",
+            area="python",
+            skill="orthogonal",
+            source_language="fr",
+            content_type="lesson",
+        )
+    )
+    db_session.commit()
+
+    assert classifier.classify("hello", db_session) == []
+
+    db_session.add(
+        VectorStore(
+            chunk_text="Perfect Match",
+            embedding=[1.0, 0.0],
+            domain="dev",
+            area="python",
+            skill="match",
+            source_language="fr",
+            content_type="lesson",
+        )
+    )
+    db_session.commit()
+
+    results = classifier.classify("hello", db_session)
+    assert len(results) == 1
+    assert results[0]["category"]["name"] == "match"
+    assert results[0]["confidence"] >= 0.95

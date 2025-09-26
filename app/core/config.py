@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     SUPABASE_VECTOR_BATCH_SIZE: int = 64
     SUPABASE_VECTOR_SYNC_ON_STARTUP: bool = True
 
+    # Classification configuration
+    DB_CLASSIFIER_DEFAULT_THRESHOLD: float = 0.2
+
 
     MAIL_PROVIDER: str = "resend"  # "sendgrid" | "brevo_smtp" | "resend"
     EMAIL_FROM: str
