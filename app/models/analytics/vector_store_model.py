@@ -18,7 +18,12 @@ class VectorStore(Base):
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     
     # L'embedding de ce texte stocké en JSON pour éviter la dépendance pgvector.
-    embedding: Mapped[list[float]] = mapped_column(JSONB, nullable=False)
+    #
+    # Certaines phases de seed (comme le classifieur texte brut) peuvent décider
+    # de ne pas calculer d'embeddings.  Dans ce cas, on autorise la valeur NULL
+    # et les services en amont appliquent un fallback basé sur des similarités
+    # textuelles.
+    embedding: Mapped[list[float] | None] = mapped_column(JSONB, nullable=True)
 
     # --- NOUVELLES COLONNES POUR LA TAXONOMIE ---
     # Ces colonnes stockent la catégorie associée à ce vecteur
