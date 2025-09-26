@@ -135,11 +135,22 @@ def _build_cors_config() -> tuple[list[str], re.Pattern[str] | None]:
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
 cors_origins, cors_regex = _build_cors_config()
+_HTMX_HEADERS = {
+    "HX-Request",
+    "HX-Target",
+    "HX-Trigger",
+    "HX-Trigger-Name",
+    "HX-Current-URL",
+    "HX-History-Restore-Request",
+}
+
+cors_headers = {"Authorization", "Content-Type", "X-App-Lang"} | _HTMX_HEADERS
+
 cors_kwargs: dict[str, object] = {
     "allow_origins": cors_origins,
     "allow_credentials": True,
     "allow_methods": ["*"],
-    "allow_headers": ["Authorization", "Content-Type", "X-App-Lang"],
+    "allow_headers": sorted(cors_headers),
 }
 
 if cors_regex is not None:
