@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 TRAINING_FILE = Path(__file__).resolve().parent.parent / "app" / "data" / "training_data.jsonl"
 
-def seed_classifier_from_jsonl():
+def seed_classifier_from_jsonl(skip_embeddings: bool = False):
     db: Session = SessionLocal()
     try:
         logger.info("--- Démarrage du seeding pour le classifieur depuis le fichier .jsonl ---")
@@ -31,6 +31,9 @@ def seed_classifier_from_jsonl():
         if num_deleted > 0:
             db.commit()
             logger.warning(f"🧹 {num_deleted} anciennes entrées ont été supprimées de la VectorStore.")
+
+        if skip_embeddings:
+            logger.info("ℹ️ Les embeddings ne seront pas générés (mode texte brut activé).")
 
         vectors_to_add = []
         count = 0
@@ -55,9 +58,11 @@ def seed_classifier_from_jsonl():
 
                     logger.info(f"  -> Traitement : '{text}' -> Skill: '{main_skill}' (Domain: {domain})")
                     
+                    embedding = None if skip_embeddings else get_embedding(text)
+
                     new_vector = VectorStore(
                         chunk_text=text,
-                        embedding=get_embedding(text),
+                        embedding=embedding,
                         domain=domain,
                         area=area,
                         skill=main_skill  # On stocke la valeur trouvée dans la colonne "skill"
@@ -82,4 +87,14 @@ def seed_classifier_from_jsonl():
         db.close()
 
 if __name__ == "__main__":
-    seed_classifier_from_jsonl()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Seed du classifieur depuis training_data.jsonl")
+    parser.add_argument(
+        "--skip-embeddings",
+        action="store_true",
+        help="Ne calcule pas les embeddings et stocke uniquement le texte brut.",
+    )
+
+    args = parser.parse_args()
+    seed_classifier_from_jsonl(skip_embeddings=args.skip_embeddings)

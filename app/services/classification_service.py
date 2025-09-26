@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List
+from difflib import SequenceMatcher
+from typing import List, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -47,15 +48,23 @@ class DBClassifier:
         if threshold is None:
             threshold = self._default_threshold
 
-        input_embedding = normalize_vector(get_embedding(text))
-        if not input_embedding or not any(abs(v) > 0 for v in input_embedding):
-            logger.warning("--- [DB_CLASSIFIER] Embedding vide pour le texte fourni.")
+        if not text or not text.strip():
+            logger.warning("--- [DB_CLASSIFIER] Texte d'entrée vide.")
             return []
 
         stored_vectors = db.query(VectorStore).all()
         if not stored_vectors:
             logger.warning("--- [DB_CLASSIFIER] La base vectorielle est vide.")
             return []
+
+        if not self._has_embeddings(stored_vectors):
+            logger.info("--- [DB_CLASSIFIER] Aucun embedding détecté, fallback textuel activé.")
+            return self._classify_without_embeddings(text, stored_vectors, top_k, threshold)
+
+        input_embedding = normalize_vector(get_embedding(text))
+        if not input_embedding or not any(abs(v) > 0 for v in input_embedding):
+            logger.warning("--- [DB_CLASSIFIER] Embedding vide pour le texte fourni. Fallback textuel utilisé.")
+            return self._classify_without_embeddings(text, stored_vectors, top_k, threshold)
 
         enriched: list[tuple[VectorStore, float]] = []
         for vector_row in stored_vectors:
@@ -73,8 +82,8 @@ class DBClassifier:
             enriched.append((vector_row, score))
 
         if not enriched:
-            logger.warning("--- [DB_CLASSIFIER] Aucun embedding valide trouvé dans la base.")
-            return []
+            logger.warning("--- [DB_CLASSIFIER] Aucun embedding valide trouvé dans la base. Fallback textuel utilisé.")
+            return self._classify_without_embeddings(text, stored_vectors, top_k, threshold)
 
         results_with_scores = sorted(enriched, key=lambda item: item[1], reverse=True)
 
@@ -109,6 +118,88 @@ class DBClassifier:
 
         if not final_results:
             logger.error("--- [DB_CLASSIFIER] Aucun match au-dessus du seuil.")
+
+        return final_results
+
+    def _has_embeddings(self, entries: Sequence[VectorStore]) -> bool:
+        """Return True if at least one entry contains a non-empty embedding."""
+
+        for entry in entries:
+            if entry.embedding:
+                try:
+                    if any(abs(v) > 0 for v in entry.embedding):
+                        return True
+                except TypeError:  # pragma: no cover - safety guard for malformed data
+                    continue
+        return False
+
+    def _classify_without_embeddings(
+        self,
+        text: str,
+        stored_vectors: Sequence[VectorStore],
+        top_k: int,
+        threshold: float,
+    ) -> List[dict]:
+        """Fallback classifier using plain-text similarity when embeddings are missing."""
+
+        normalized_input = text.strip().lower()
+        scored: list[tuple[VectorStore, float]] = []
+
+        for vector in stored_vectors:
+            candidate = (vector.chunk_text or "").strip()
+            if not candidate:
+                continue
+
+            candidate_norm = candidate.lower()
+            if not candidate_norm:
+                continue
+
+            if normalized_input == candidate_norm:
+                score = 1.0
+            elif normalized_input in candidate_norm or candidate_norm in normalized_input:
+                score = 0.95
+            else:
+                score = SequenceMatcher(None, normalized_input, candidate_norm).ratio()
+
+            scored.append((vector, score))
+
+        if not scored:
+            logger.warning("--- [DB_CLASSIFIER] Aucun texte valide disponible pour le fallback.")
+            return []
+
+        results_with_scores = sorted(scored, key=lambda item: item[1], reverse=True)
+
+        final_results: List[dict] = []
+        for vector, score in results_with_scores[: top_k or 1]:
+            if score < threshold:
+                logger.warning(
+                    "    -> Match ignoré: '%s' (score %.4f < %.2f)",
+                    vector.chunk_text,
+                    score,
+                    threshold,
+                )
+                continue
+
+            logger.info(
+                "    -> Match (fallback) trouvé: '%s' (Skill: %s) score=%.4f",
+                vector.chunk_text,
+                vector.skill,
+                score,
+            )
+            final_results.append(
+                {
+                    "category": {
+                        "name": vector.skill,
+                        "domain": vector.domain,
+                        "area": vector.area,
+                    },
+                    "confidence": float(score),
+                    "source_text": vector.chunk_text,
+                }
+            )
+
+        if not final_results:
+            logger.error("--- [DB_CLASSIFIER] Aucun match texte au-dessus du seuil.")
 
         return final_results
 
