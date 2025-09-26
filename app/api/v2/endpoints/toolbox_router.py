@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 
 from app.models.toolbox.molecule_note_model import MoleculeNote
+from app.api.v2.endpoints.learning_router import _build_empty_journal_response
 
 router = APIRouter()
 
@@ -135,3 +136,25 @@ def delete_note(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note introuvable")
 
     toolbox_notes_crud.delete_note(db, note)
+
+
+@router.get("/journal", summary="Journal de progression (toolbox)")
+def get_toolbox_journal(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
+) -> dict:
+    """Placeholder endpoint so the frontend can fetch toolbox journal data."""
+
+    return _build_empty_journal_response(limit)
+
+
+@router.get("/journal/entries", summary="Entrées du journal (toolbox)")
+def get_toolbox_journal_entries(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),  # noqa: ARG001 - réservé pour un usage futur
+    current_user: User = Depends(get_current_user),  # noqa: ARG001 - garde d'authentification
+) -> dict:
+    """Alias with the same placeholder payload as :func:`get_toolbox_journal`."""
+
+    return _build_empty_journal_response(limit)
