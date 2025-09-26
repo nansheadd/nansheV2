@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
 from app.db.base_class import Base
 from app.api.v2.api import api_router
-from sqlalchemy import or_
+from sqlalchemy import inspect, or_, text
 
 from app.core.security import verify_password, get_password_hash
 from app.models.user.user_model import User
@@ -214,6 +214,7 @@ async def startup():
     logger.info("Vérification et création des tables de la base de données...")
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_capsule_learning_plan_column)
     logger.info("✅ Les tables de la base de données sont prêtes.")
 
     # --- Création de l'administrateur par défaut ---
@@ -250,3 +251,40 @@ async def startup():
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Nanshe API V2!"}
+
+
+def _ensure_capsule_learning_plan_column(sync_conn) -> None:
+    """Guarantee the presence of the `learning_plan_json` column.
+
+    Existing deployments might have been created before the column was
+    introduced in the SQLAlchemy model. Without a dedicated migrations
+    framework we perform a lightweight, idempotent schema adjustment at
+    startup so that the ORM queries expecting this column do not fail.
+    """
+
+    inspector = inspect(sync_conn)
+    existing_columns = {column["name"] for column in inspector.get_columns("capsules")}
+
+    if "learning_plan_json" in existing_columns:
+        return
+
+    dialect = sync_conn.dialect.name
+
+    if dialect == "postgresql":
+        column_type = "JSONB"
+    elif dialect == "sqlite":
+        column_type = "JSON"
+    else:
+        column_type = "JSON"
+
+    logger.info(
+        "Ajout de la colonne 'learning_plan_json' à la table 'capsules' (dialecte: %s).",
+        dialect,
+    )
+
+    sync_conn.execute(
+        text(
+            "ALTER TABLE capsules ADD COLUMN learning_plan_json "
+            f"{column_type}"
+        )
+    )
