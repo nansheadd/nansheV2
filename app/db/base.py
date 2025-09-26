@@ -32,6 +32,7 @@ from app.models.progress.user_atomic_progress import (
     UserCharacterProgress,
     UserVocabularyProgress,
 )
+from app.models.progress.user_molecule_review_model import UserMoleculeReview
 
 # Analytics & feedback
 from app.models.analytics.golden_examples_model import GoldenExample
@@ -72,6 +73,7 @@ __all__ = (
     "UserAtomProgress",
     "UserCharacterProgress",
     "UserVocabularyProgress",
+    "UserMoleculeReview",
     "GoldenExample",
     "ContentFeedback",
     "VectorStore",

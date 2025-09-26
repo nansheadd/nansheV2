@@ -13,6 +13,7 @@ from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
 from app.models.capsule.granule_model import Granule
 from app.crud import badge_crud
+from app.services.srs_service import SRSService
 
 logger = logging.getLogger(__name__)
 
@@ -357,6 +358,9 @@ class ProgressService:
         study_time_seconds = aggregates["total_seconds"]
         current_streak = self._calculate_current_streak(aggregates["days"])
         breakdown = self.get_study_breakdown()
+        srs_service = SRSService(db=self.db, user=self.user)
+        srs_overview = srs_service.build_overview(limit=5)
+        error_overview = srs_service.build_error_overview(limit=5)
 
         return {
             "total_study_time_seconds": study_time_seconds,
@@ -367,6 +371,8 @@ class ProgressService:
                 "by_area": breakdown.get("by_area", []),
                 "by_capsule": breakdown.get("by_capsule", []),
             },
+            "srs": srs_overview,
+            "errors": error_overview,
         }
 
     def _calculate_total_study_time(self) -> int:
