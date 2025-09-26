@@ -8,6 +8,7 @@ from .capsule_model import GenerationStatus
 if TYPE_CHECKING:
     from .granule_model import Granule
     from .atom_model import Atom
+    from ..progress.user_molecule_review_model import UserMoleculeReview
 
 class Molecule(Base):
     """Représente une leçon ou un chapitre cohérent à l'intérieur d'un Granule."""
@@ -27,6 +28,9 @@ class Molecule(Base):
     granule: Mapped["Granule"] = relationship(back_populates="molecules")
     atoms: Mapped[List["Atom"]] = relationship(
         back_populates="molecule", cascade="all, delete-orphan"
+    )
+    reviews: Mapped[List["UserMoleculeReview"]] = relationship(
+        "UserMoleculeReview", back_populates="molecule", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

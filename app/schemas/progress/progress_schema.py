@@ -63,3 +63,5 @@ class UserStatsResponse(BaseModel):
     current_streak_days: int = 0
     total_sessions: int = 0
     breakdown: StudyBreakdown = Field(default_factory=StudyBreakdown)
+    srs: Dict[str, Any] = Field(default_factory=dict)
+    errors: Dict[str, Any] = Field(default_factory=dict)

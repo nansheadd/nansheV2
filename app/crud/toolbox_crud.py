@@ -11,6 +11,7 @@ from app.crud import coach_conversation_crud, coach_energy_crud
 from app.models.capsule import capsule_model, granule_model, molecule_model, atom_model
 from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.user.user_model import User
+from app.services.srs_service import SRSService
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ def ask_coach(
     weak_topics: list[str] = []
     recent_errors: list[UserAnswerLog] = []
     focus_description = ""
+    srs_digest = {"reviews": "", "errors": ""}
 
     if capsule:
         # Identifier les molécules qui posent problème (basé sur les erreurs récentes)
@@ -188,6 +190,9 @@ def ask_coach(
             except (ValueError, TypeError):
                 logger.debug("Impossible d'interpréter granule/molecule depuis le contexte: %s", context)
 
+        srs_service = SRSService(db=db, user=user)
+        srs_digest = srs_service.coach_digest(capsule_id=capsule.id)
+
     capsule_details = (
         f"Capsule : {capsule.title} — Domaine {capsule.domain} / Aire {capsule.area} — Compétence {capsule.main_skill}."
         if capsule
@@ -226,6 +231,12 @@ Points faibles détectés :
 
 Erreurs récentes :
 {recent_errors_text}
+
+SRS à traiter :
+{srs_digest['reviews']}
+
+Carnet d'erreurs synthétique :
+{srs_digest['errors']}
 
 Donne des conseils courts, concrets et motivants.
 Réponds exclusivement en JSON avec la structure suivante :
