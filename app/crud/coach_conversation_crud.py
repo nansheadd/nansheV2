@@ -104,6 +104,93 @@ def append_message(
     return message
 
 
+def get_message_for_thread(
+    db: Session,
+    thread: CoachConversationThread,
+    message_id: int,
+) -> CoachConversationMessage | None:
+    """Return a specific message belonging to ``thread``."""
+
+    return (
+        db.query(CoachConversationMessage)
+        .filter(
+            CoachConversationMessage.thread_id == thread.id,
+            CoachConversationMessage.id == message_id,
+        )
+        .first()
+    )
+
+
+def set_message_feedback(
+    db: Session,
+    message: CoachConversationMessage,
+    feedback: str | None,
+) -> CoachConversationMessage:
+    """Persist a feedback marker inside the message payload."""
+
+    payload = dict(message.payload or {})
+
+    if feedback:
+        payload["feedback"] = feedback
+        payload["feedback_updated_at"] = _now().isoformat()
+    else:
+        payload.pop("feedback", None)
+        payload.pop("feedback_updated_at", None)
+
+    message.payload = payload or None
+    thread = message.thread
+    if thread is not None:
+        thread.updated_at = _now()
+        db.add(thread)
+
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return message
+
+
+def attach_note_reference(
+    db: Session,
+    message: CoachConversationMessage,
+    note_id: int,
+) -> CoachConversationMessage:
+    """Store a backlink to a created note in the message payload."""
+
+    payload = dict(message.payload or {})
+    payload["note_id"] = note_id
+    payload["note_attached_at"] = _now().isoformat()
+    message.payload = payload
+
+    thread = message.thread
+    if thread is not None:
+        thread.updated_at = _now()
+        db.add(thread)
+
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return message
+
+
+def clear_thread_messages(db: Session, thread: CoachConversationThread) -> None:
+    """Delete every message tied to ``thread`` and refresh timestamps."""
+
+    db.query(CoachConversationMessage).filter(CoachConversationMessage.thread_id == thread.id).delete(
+        synchronize_session=False
+    )
+    thread.updated_at = _now()
+    db.add(thread)
+    db.commit()
+    db.refresh(thread)
+
+
+def delete_thread(db: Session, thread: CoachConversationThread) -> None:
+    """Remove a conversation thread and its messages."""
+
+    db.delete(thread)
+    db.commit()
+
+
 def append_user_message(
     db: Session,
     thread: CoachConversationThread,

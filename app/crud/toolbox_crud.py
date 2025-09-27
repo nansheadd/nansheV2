@@ -117,6 +117,7 @@ def ask_coach(
     history: list,
     quick_action: str | None = None,
     selection: dict | None = None,
+    thread_id: int | None = None,
 ) -> dict:
     """Produit une réponse contextualisée par capsule pour le coach IA."""
 
@@ -130,6 +131,15 @@ def ask_coach(
     if molecule and capsule is None:
         granule = getattr(molecule, "granule", None)
         capsule = getattr(granule, "capsule", None)
+
+    thread = None
+    if thread_id:
+        thread = coach_conversation_crud.get_thread_for_user(db, user, thread_id)
+        if thread:
+            if thread.capsule_id and (capsule is None or thread.capsule_id != getattr(capsule, "id", None)):
+                capsule = db.get(capsule_model.Capsule, thread.capsule_id)
+            if thread.molecule_id and (molecule is None or thread.molecule_id != getattr(molecule, "id", None)):
+                molecule = db.get(molecule_model.Molecule, thread.molecule_id)
 
     weak_topics: list[str] = []
     recent_errors: list[UserAnswerLog] = []
@@ -247,17 +257,18 @@ Réponds exclusivement en JSON avec la structure suivante :
 }}
 """.strip()
 
-    location, location_capsule_id, location_molecule_id = coach_conversation_crud.determine_location(
-        capsule=capsule,
-        molecule=molecule,
-    )
-    thread = coach_conversation_crud.get_or_create_thread(
-        db,
-        user,
-        location=location,
-        capsule_id=location_capsule_id,
-        molecule_id=location_molecule_id,
-    )
+    if thread is None:
+        location, location_capsule_id, location_molecule_id = coach_conversation_crud.determine_location(
+            capsule=capsule,
+            molecule=molecule,
+        )
+        thread = coach_conversation_crud.get_or_create_thread(
+            db,
+            user,
+            location=location,
+            capsule_id=location_capsule_id,
+            molecule_id=location_molecule_id,
+        )
 
     user_message_content = message.strip()
     if not user_message_content:

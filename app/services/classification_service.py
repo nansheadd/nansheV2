@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from difflib import SequenceMatcher
+from collections.abc import Iterable
 from typing import List, Sequence
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,34 @@ from app.services.rag_utils import get_embedding
 from app.core.embeddings import cosine_similarity, ensure_dimension, normalize_vector
 
 logger = logging.getLogger(__name__)
+
+
+def _to_float_list(value: object) -> list[float]:
+    """Best-effort conversion of pgvector/array values to a Python list."""
+
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return [float(v) for v in value]
+
+    if isinstance(value, tuple):
+        return [float(v) for v in value]
+
+    if isinstance(value, Iterable):  # covers pgvector.Vector which is iterable
+        try:
+            return [float(v) for v in value]
+        except Exception:  # pragma: no cover - extremely defensive
+            pass
+
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        try:
+            return [float(v) for v in tolist()]
+        except Exception:  # pragma: no cover - defensive
+            return []
+
+    return []
 
 
 class DBClassifier:
@@ -68,10 +97,7 @@ class DBClassifier:
 
         enriched: list[tuple[VectorStore, float]] = []
         for vector_row in stored_vectors:
-            try:
-                raw_embedding = list(vector_row.embedding)
-            except TypeError:
-                raw_embedding = []
+            raw_embedding = _to_float_list(getattr(vector_row, "embedding", None))
 
             if not raw_embedding:
                 continue
@@ -125,12 +151,9 @@ class DBClassifier:
         """Return True if at least one entry contains a non-empty embedding."""
 
         for entry in entries:
-            if entry.embedding:
-                try:
-                    if any(abs(v) > 0 for v in entry.embedding):
-                        return True
-                except TypeError:  # pragma: no cover - safety guard for malformed data
-                    continue
+            values = _to_float_list(getattr(entry, "embedding", None))
+            if any(abs(v) > 0 for v in values):
+                return True
         return False
 
     def _classify_without_embeddings(

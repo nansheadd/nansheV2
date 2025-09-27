@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List
 
 from sqlalchemy import func
@@ -16,6 +16,18 @@ from app.models.progress.user_answer_log_model import UserAnswerLog
 from app.models.progress.user_atomic_progress import UserAtomProgress
 from app.models.progress.user_molecule_review_model import UserMoleculeReview
 from app.models.user.user_model import SubscriptionStatus, User
+
+
+def _ensure_naive_utc(value: datetime | None) -> datetime | None:
+    """Return a timezone-naive UTC datetime for comparisons."""
+
+    if value is None:
+        return None
+
+    if value.tzinfo is None:
+        return value
+
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class SRSService:
@@ -128,7 +140,8 @@ class SRSService:
         for schedule in schedules:
             molecule = schedule.molecule
             capsule = getattr(getattr(molecule, "granule", None), "capsule", None)
-            next_review = schedule.next_review_at
+            next_review_raw = schedule.next_review_at
+            next_review = _ensure_naive_utc(next_review_raw)
             due_in_hours = None
             if next_review:
                 delta = next_review - now
@@ -144,7 +157,7 @@ class SRSService:
                     "molecule_title": molecule.title,
                     "capsule_id": getattr(capsule, "id", None),
                     "capsule_title": getattr(capsule, "title", None),
-                    "next_review_at": next_review.isoformat() if next_review else None,
+                    "next_review_at": next_review_raw.isoformat() if next_review_raw else None,
                     "due_in_hours": due_in_hours,
                     "interval_days": round(schedule.interval_days or 0, 2),
                     "streak": schedule.streak or 0,

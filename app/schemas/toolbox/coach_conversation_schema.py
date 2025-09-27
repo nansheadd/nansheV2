@@ -65,6 +65,12 @@ class CoachConversationThreadOut(BaseModel):
         )
 
 
+class CoachConversationThreadDetail(CoachConversationThreadOut):
+    """Detailed conversation thread with the full message list."""
+
+    messages: List[CoachConversationMessageOut]
+
+
 class CoachConversationThreadList(BaseModel):
     """Response model containing multiple threads."""
 
@@ -74,5 +80,6 @@ class CoachConversationThreadList(BaseModel):
 __all__ = [
     "CoachConversationMessageOut",
     "CoachConversationThreadOut",
+    "CoachConversationThreadDetail",
     "CoachConversationThreadList",
 ]

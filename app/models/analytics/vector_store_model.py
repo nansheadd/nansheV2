@@ -1,13 +1,19 @@
 # Fichier: backend/app/models/analytics/vector_store_model.py (MODIFIÉ)
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy import String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
+from app.core.embeddings import EMBEDDING_DIMENSION
+
+try:  # pragma: no cover - optional dependency when using SQLite locally
+    from pgvector.sqlalchemy import Vector
+except ImportError:  # pragma: no cover - fallback for environments without pgvector
+    Vector = None  # type: ignore
 
 class VectorStore(Base):
     __tablename__ = 'vector_store'
@@ -17,13 +23,10 @@ class VectorStore(Base):
     # Le texte de la définition (ex: "Apprendre à lire le japonais")
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     
-    # L'embedding de ce texte stocké en JSON pour éviter la dépendance pgvector.
-    #
-    # Certaines phases de seed (comme le classifieur texte brut) peuvent décider
-    # de ne pas calculer d'embeddings.  Dans ce cas, on autorise la valeur NULL
-    # et les services en amont appliquent un fallback basé sur des similarités
-    # textuelles.
-    embedding: Mapped[list[float] | None] = mapped_column(JSONB, nullable=True)
+    if Vector is not None:
+        embedding: Mapped[List[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=True)
+    else:  # pragma: no cover - fallback when pgvector is unavailable
+        embedding: Mapped[List[float] | None] = mapped_column(JSONB, nullable=True)
 
     # --- NOUVELLES COLONNES POUR LA TAXONOMIE ---
     # Ces colonnes stockent la catégorie associée à ce vecteur

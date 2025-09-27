@@ -211,6 +211,7 @@ app.include_router(api_router, prefix="/api/v2")
 async def startup():
     logger.info("Vérification et création des tables de la base de données...")
     async with async_engine.begin() as conn:
+        await conn.run_sync(_ensure_vector_extension)
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_capsule_learning_plan_column)
     logger.info("✅ Les tables de la base de données sont prêtes.")
@@ -286,3 +287,15 @@ def _ensure_capsule_learning_plan_column(sync_conn) -> None:
             f"{column_type}"
         )
     )
+
+
+def _ensure_vector_extension(sync_conn) -> None:
+    """Ensure the Postgres pgvector extension exists before table creation."""
+
+    if sync_conn.dialect.name != "postgresql":
+        return
+
+    try:
+        sync_conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    except Exception as exc:  # pragma: no cover - runtime safeguard
+        logger.warning("Impossible d'activer l'extension pgvector: %s", exc)

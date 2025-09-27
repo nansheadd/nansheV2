@@ -3,6 +3,7 @@
 from .note_schema import MoleculeNoteBase, MoleculeNoteCreate, MoleculeNoteUpdate, MoleculeNoteOut
 from .coach_conversation_schema import (
     CoachConversationMessageOut,
+    CoachConversationThreadDetail,
     CoachConversationThreadList,
     CoachConversationThreadOut,
 )
@@ -14,5 +15,6 @@ __all__ = (
     "MoleculeNoteOut",
     "CoachConversationMessageOut",
     "CoachConversationThreadOut",
+    "CoachConversationThreadDetail",
     "CoachConversationThreadList",
 )

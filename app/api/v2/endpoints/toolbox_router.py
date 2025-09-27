@@ -13,15 +13,19 @@ from app.crud import (
 )
 from app.schemas.toolbox import (
     CoachConversationMessageOut,
+    CoachConversationThreadDetail,
     CoachConversationThreadOut,
     MoleculeNoteCreate,
     MoleculeNoteOut,
     MoleculeNoteUpdate,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Literal
 
-from app.models.toolbox.coach_conversation_model import CoachConversationThread
+from app.models.toolbox.coach_conversation_model import (
+    CoachConversationRole,
+    CoachConversationThread,
+)
 from app.models.toolbox.molecule_note_model import MoleculeNote
 from app.api.v2.endpoints.learning_router import _build_empty_journal_response
 
@@ -33,6 +37,17 @@ class CoachRequest(BaseModel):
     history: List[Dict[str, str]]
     quick_action: str | None = None
     selection: Dict[str, Any] | None = None
+    thread_id: int | None = Field(default=None, gt=0)
+
+
+class CoachFeedbackPayload(BaseModel):
+    feedback: Literal["like", "dislike", None] = Field(default=None)
+
+
+class CoachMessageNotePayload(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    molecule_id: int | None = Field(default=None, gt=0)
+    content: str | None = Field(default=None)
 
 
 class JournalRequest(BaseModel):
@@ -67,6 +82,7 @@ def handle_coach_request(
             history=request.history,
             quick_action=request.quick_action,
             selection=request.selection,
+            thread_id=request.thread_id,
         )
     except coach_energy_crud.CoachEnergyDepleted as exc:
         raise HTTPException(
@@ -102,6 +118,29 @@ def _serialize_thread(
         message_count=message_count,
         last_message_at=last_message_at,
     )
+
+
+def _serialize_thread_detail(
+    thread: CoachConversationThread,
+    stats: dict[int, tuple[int, datetime | None]],
+    messages: list[CoachConversationMessageOut] | list,
+) -> CoachConversationThreadDetail:
+    base = _serialize_thread(thread, stats)
+    return CoachConversationThreadDetail(
+        **base.model_dump(),
+        messages=messages,
+    )
+
+
+def _get_thread_or_404(
+    db: Session,
+    current_user: User,
+    thread_id: int,
+) -> CoachConversationThread:
+    thread = coach_conversation_crud.get_thread_for_user(db, current_user, thread_id)
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation introuvable")
+    return thread
 
 
 @router.get("/coach/conversations", response_model=list[CoachConversationThreadOut])
@@ -160,6 +199,21 @@ def list_coach_conversation_alias(
 
 
 @router.get(
+    "/coach/conversations/{thread_id}",
+    response_model=CoachConversationThreadDetail,
+)
+def get_coach_conversation_detail(
+    thread_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationThreadDetail:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    stats = coach_conversation_crud.fetch_thread_statistics(db, [thread.id])
+    messages = coach_conversation_crud.list_messages_for_thread(db, thread)
+    return _serialize_thread_detail(thread, stats, messages)
+
+
+@router.get(
     "/coach/conversations/{thread_id}/messages",
     response_model=list[CoachConversationMessageOut],
 )
@@ -169,12 +223,120 @@ def list_coach_conversation_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[CoachConversationMessageOut]:
-    thread = coach_conversation_crud.get_thread_for_user(db, current_user, thread_id)
-    if not thread:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation introuvable")
+    thread = _get_thread_or_404(db, current_user, thread_id)
 
     messages = coach_conversation_crud.list_messages_for_thread(db, thread, limit=limit)
     return messages
+
+
+@router.post(
+    "/coach/conversations/{thread_id}/reset",
+    response_model=CoachConversationThreadDetail,
+)
+def reset_coach_conversation(
+    thread_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationThreadDetail:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    coach_conversation_crud.clear_thread_messages(db, thread)
+    stats = coach_conversation_crud.fetch_thread_statistics(db, [thread.id])
+    return _serialize_thread_detail(thread, stats, [])
+
+
+@router.delete(
+    "/coach/conversations/{thread_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_coach_conversation(
+    thread_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    coach_conversation_crud.delete_thread(db, thread)
+
+
+@router.post(
+    "/coach/conversations/{thread_id}/messages/{message_id}/feedback",
+    response_model=CoachConversationMessageOut,
+)
+def set_coach_message_feedback(
+    thread_id: int,
+    message_id: int,
+    payload: CoachFeedbackPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationMessageOut:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    message = coach_conversation_crud.get_message_for_thread(db, thread, message_id)
+    if not message:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message introuvable")
+    if message.role != CoachConversationRole.COACH:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Seuls les messages du coach peuvent recevoir un avis.")
+    updated = coach_conversation_crud.set_message_feedback(db, message, payload.feedback)
+    return updated
+
+
+@router.delete(
+    "/coach/conversations/{thread_id}/messages/{message_id}/feedback",
+    response_model=CoachConversationMessageOut,
+)
+def clear_coach_message_feedback(
+    thread_id: int,
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachConversationMessageOut:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    message = coach_conversation_crud.get_message_for_thread(db, thread, message_id)
+    if not message:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message introuvable")
+    if message.role != CoachConversationRole.COACH:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Seuls les messages du coach peuvent recevoir un avis.")
+    updated = coach_conversation_crud.set_message_feedback(db, message, None)
+    return updated
+
+
+@router.post(
+    "/coach/conversations/{thread_id}/messages/{message_id}/notes",
+    response_model=MoleculeNoteOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_note_from_coach_message(
+    thread_id: int,
+    message_id: int,
+    payload: CoachMessageNotePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MoleculeNoteOut:
+    thread = _get_thread_or_404(db, current_user, thread_id)
+    message = coach_conversation_crud.get_message_for_thread(db, thread, message_id)
+    if not message:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message introuvable")
+    if message.role != CoachConversationRole.COACH:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Seuls les messages du coach peuvent être ajoutés aux notes.")
+
+    target_molecule_id = payload.molecule_id or thread.molecule_id
+    if not target_molecule_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucune molécule associée pour créer la note.")
+
+    title = payload.title or message.content.split("\n", 1)[0][:120]
+    content = payload.content or message.content
+
+    try:
+        note = toolbox_notes_crud.create_note(
+            db,
+            current_user,
+            molecule_id=target_molecule_id,
+            title=title,
+            content=content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    coach_conversation_crud.attach_note_reference(db, message, note.id)
+    return _serialize_note(note)
 
 
 def _serialize_note(note: MoleculeNote) -> MoleculeNoteOut:
