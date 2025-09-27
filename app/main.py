@@ -145,13 +145,11 @@ _HTMX_HEADERS = {
     "HX-History-Restore-Request",
 }
 
-cors_headers = {"Authorization", "Content-Type", "X-App-Lang"} | _HTMX_HEADERS
-
 cors_kwargs: dict[str, object] = {
     "allow_origins": cors_origins,
     "allow_credentials": True,
     "allow_methods": ["*"],
-    "allow_headers": sorted(cors_headers),
+    "allow_headers": ["*"],
 }
 
 if cors_regex is not None:
