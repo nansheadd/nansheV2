@@ -320,7 +320,12 @@ def get_public_capsules(
     current_user: user_model.User = Depends(get_current_user)
 ):
     """Récupère les capsules publiques auxquelles l'utilisateur N'EST PAS encore inscrit."""
-    enrolled_capsule_ids = {e.capsule_id for e in current_user.enrollments}
+    # Requête dédiée pour éviter de s'appuyer sur les relations paresseuses d'un User détaché.
+    enrolled_capsule_ids = {
+        enrollment.capsule_id
+        for enrollment in db.query(utility_models.UserCapsuleEnrollment)
+        .filter(utility_models.UserCapsuleEnrollment.user_id == current_user.id)
+    }
     
     public_capsules = db.query(capsule_model.Capsule).filter(
         capsule_model.Capsule.is_public == True,
