@@ -1,14 +1,27 @@
-# Fichier: backend/app/db/session.py (VERSION FINALE)
+"""Database session and engine utilities.
+
+This module centralises the creation of both asynchronous and synchronous
+SQLAlchemy engines.  It also offers a lightweight SQLite fallback for local
+development when a PostgreSQL instance is unavailable.
+"""
+
 from __future__ import annotations
 
+import logging
+import os
 import ssl
+from typing import Any
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import create_engine
-from sqlalchemy.engine.url import make_url
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _create_ssl_context(
@@ -39,18 +52,7 @@ def _create_ssl_context(
 
 
 def _prepare_asyncpg_connection(url: str) -> tuple[str, dict[str, object]]:
-    """Strip unsupported query params from asyncpg URLs.
-
-    Providers such as Supabase append ``sslmode=require`` to their connection
-    strings.  SQLAlchemy propagates any query parameter to ``asyncpg.connect``
-    which does not understand the ``sslmode`` keyword and raises
-    ``TypeError: connect() got an unexpected keyword argument 'sslmode'``.
-
-    We remove this parameter for the async engine while keeping it on the
-    original URL (used by the synchronous psycopg engine where ``sslmode`` is
-    valid) and translate common ``sslmode`` values to an ``ssl`` argument that
-    mirrors libpq's behaviour for ``asyncpg``.
-    """
+    """Strip unsupported query params from asyncpg URLs."""
 
     try:
         parsed_url = make_url(url)
@@ -92,27 +94,111 @@ def _prepare_asyncpg_connection(url: str) -> tuple[str, dict[str, object]]:
     sanitized_url = parsed_url.set(query=query).render_as_string(hide_password=False)
     return sanitized_url, connect_args
 
-# --- Moteur Asynchrone (pour SQLAdmin) ---
-# Lit l'URL complète "postgresql+asyncpg://..." de votre .env
-_async_url, _async_connect_args = _prepare_asyncpg_connection(str(settings.DATABASE_URL))
 
-async_engine = create_async_engine(
-    _async_url,
-    echo=False,
-    future=True,
-    connect_args=_async_connect_args,
-)
+def _derive_sync_connection_parameters(async_url: str) -> tuple[str, dict[str, Any]]:
+    """Return a synchronous SQLAlchemy URL matching the async configuration."""
 
-# --- Moteur Synchrone (pour votre API existante) ---
-# On retire "+asyncpg" pour que SQLAlchemy utilise le pilote synchrone par défaut (psycopg2)
-sync_db_url = str(settings.DATABASE_URL).replace("+asyncpg", "")
-sync_engine = create_engine(
-    sync_db_url,
-    pool_pre_ping=True
-)
+    try:
+        parsed_url: URL = make_url(async_url)
+    except Exception:
+        return async_url.replace("+asyncpg", ""), {}
 
-# Fabrique de sessions pour votre API (synchrone)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+    drivername = parsed_url.drivername
+    connect_args: dict[str, Any] = {}
+
+    if drivername.startswith("postgresql+"):
+        # ``postgresql+asyncpg`` -> ``postgresql`` so psycopg can be used for sync work.
+        parsed_url = parsed_url.set(drivername=drivername.split("+", 1)[0])
+    elif drivername == "sqlite+aiosqlite":
+        # Swap to the synchronous SQLite driver.
+        parsed_url = parsed_url.set(drivername="sqlite")
+        connect_args["check_same_thread"] = False
+
+    return parsed_url.render_as_string(hide_password=False), connect_args
+
+
+def _should_enable_sqlite_fallback() -> bool:
+    environment = (getattr(settings, "ENVIRONMENT", "development") or "").lower()
+    if os.getenv("DISABLE_SQLITE_FALLBACK") == "1":
+        return False
+    return environment in {"development", "local"}
+
+
+SQLITE_FALLBACK_URL = "sqlite+aiosqlite:///./nanshe_local.db"
+
+# These globals are populated by ``configure_database``.
+async_engine: AsyncEngine
+sync_engine: Engine
+SessionLocal: sessionmaker
+
+
+def configure_database(database_url: str | None = None, *, allow_fallback: bool = True) -> None:
+    """Initialise the engines and session factory.
+
+    ``database_url`` defaults to the environment configuration.  When the
+    connection attempt fails locally we transparently fall back to a SQLite
+    database so the API can boot without a running PostgreSQL instance.
+    """
+
+    global async_engine, sync_engine, SessionLocal
+
+    target_url = str(database_url or settings.DATABASE_URL)
+    async_url, async_connect_args = _prepare_asyncpg_connection(target_url)
+
+    logger.info("Configuration de la base de données: %s", async_url)
+
+    candidate_async_engine = create_async_engine(
+        async_url,
+        echo=False,
+        future=True,
+        connect_args=async_connect_args,
+    )
+
+    sync_url, sync_connect_args = _derive_sync_connection_parameters(async_url)
+    candidate_sync_engine = create_engine(
+        sync_url,
+        pool_pre_ping=True,
+        connect_args=sync_connect_args,
+    )
+
+    # Verify the connection eagerly so we can provide a clearer error and/or
+    # transparently switch to SQLite before the rest of the application boots.
+    try:
+        if candidate_sync_engine.dialect.name != "sqlite":
+            with candidate_sync_engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+    except (OperationalError, OSError) as exc:
+        if allow_fallback and _should_enable_sqlite_fallback():
+            logger.warning(
+                "Impossible de joindre la base de données '%s' (%s). Bascule automatique vers SQLite.",
+                async_url,
+                exc,
+            )
+            # Dispose early to avoid keeping faulty connections around.
+            try:
+                candidate_sync_engine.dispose()
+            except Exception:  # pragma: no cover - defensive cleanup
+                pass
+            try:
+                candidate_async_engine.sync_engine.dispose()
+            except Exception:  # pragma: no cover - defensive cleanup
+                pass
+
+            configure_database(SQLITE_FALLBACK_URL, allow_fallback=False)
+            return
+
+        logger.error("Connexion à la base de données échouée: %s", exc)
+        raise
+
+    async_engine = candidate_async_engine
+    sync_engine = candidate_sync_engine
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+
+
+# Initialise the engines at import time so the rest of the application can use
+# them immediately.
+configure_database()
+
 
 # Dépendance FastAPI pour les sessions synchrones (utilisée par vos routeurs API)
 def get_db():
