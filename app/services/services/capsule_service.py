@@ -2,7 +2,7 @@ import importlib
 import io
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import BackgroundTasks, HTTPException
 from openai import OpenAI
@@ -335,10 +335,46 @@ class CapsuleService:
         self._progress_cache_capsule_id = capsule.id
         return progress_map
 
+    def _deduplicate_molecule_atoms(self, molecule: Molecule) -> Molecule:
+        """Remove duplicate core atoms (same content_type) and resequence orders."""
+        if not molecule:
+            return molecule
+
+        core_atoms = sorted(
+            [atom for atom in molecule.atoms if not getattr(atom, "is_bonus", False)],
+            key=lambda atom: (atom.order or 0, atom.id or 0),
+        )
+
+        seen: Dict[Tuple[str, str], Atom] = {}
+        duplicates: List[Atom] = []
+        for atom in core_atoms:
+            content_type = atom.content_type.value if isinstance(atom.content_type, AtomContentType) else str(atom.content_type)
+            key = (content_type.lower(), (atom.difficulty or "").strip().lower())
+            if key in seen:
+                duplicates.append(atom)
+            else:
+                seen[key] = atom
+
+        if duplicates:
+            for duplicate in duplicates:
+                self.db.delete(duplicate)
+            self.db.flush()
+            molecule = self.db.get(Molecule, molecule.id)
+
+        if not molecule:
+            return molecule
+
+        atoms_sorted = sorted(molecule.atoms, key=lambda atom: (atom.order or 0, atom.id or 0))
+        for index, atom in enumerate(atoms_sorted, start=1):
+            if atom.order != index:
+                atom.order = index
+        self.db.flush()
+        return molecule
+
     def _is_molecule_completed(self, molecule: Molecule, progress_map: Optional[Dict[int, UserAtomProgress]] = None) -> bool:
         core_atoms = [atom for atom in molecule.atoms if not getattr(atom, 'is_bonus', False)]
         if not core_atoms:
-            return True
+            return False
         if progress_map is None:
             progress_map = self._get_progress_map_for_atom_ids([atom.id for atom in core_atoms])
         for atom in core_atoms:
@@ -825,6 +861,8 @@ class CapsuleService:
 
         self._ensure_molecule_unlocked(next_molecule)
 
+        next_molecule = self._deduplicate_molecule_atoms(next_molecule)
+
         if next_molecule.atoms:
             logger.info(f"--- [SERVICE] Les atomes pour la molécule {next_molecule.id} existent déjà. On les retourne. ---")
             atoms_existing = sorted(next_molecule.atoms, key=lambda a: a.order)
@@ -851,8 +889,10 @@ class CapsuleService:
         else:
             next_molecule.generation_status = GenerationStatus.COMPLETED
             self.db.commit()
+            next_molecule = self._deduplicate_molecule_atoms(next_molecule)
 
         if atoms:
+            atoms = sorted(next_molecule.atoms, key=lambda a: a.order)
             self._notify(
                 title="Nouvelle leçon débloquée",
                 message=f"La leçon '{next_molecule.title}' est prête dans la capsule {next_molecule.granule.capsule.title}.",
@@ -873,6 +913,7 @@ class CapsuleService:
             logger.error(f"--- [SERVICE] Molécule ID {molecule_id} non trouvée.")
             return [] # Ou lever une HTTPException
 
+        molecule = self._deduplicate_molecule_atoms(molecule)
         self._progress_cache = None
         self._progress_cache_capsule_id = None
 
@@ -905,6 +946,7 @@ class CapsuleService:
                         exc_info=True,
                     )
                     raise
+                molecule = self._deduplicate_molecule_atoms(molecule)
                 existing_atoms = sorted(molecule.atoms, key=lambda a: a.order)
 
             annotated_atoms = self._annotate_atoms_with_progress(existing_atoms)
@@ -935,6 +977,7 @@ class CapsuleService:
             self.db.refresh(molecule)
             molecule.generation_status = GenerationStatus.COMPLETED
             self.db.commit()
+            molecule = self._deduplicate_molecule_atoms(molecule)
 
         if atoms:
             self._notify(

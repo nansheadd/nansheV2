@@ -10,6 +10,7 @@ from app.models.analytics.classification_feedback_model import ClassificationFee
 from app.models.analytics.vector_store_model import VectorStore
 from app.models.user.user_model import User
 from app.services.rag_utils import get_embedding
+from app.core.embeddings import ensure_dimension
 from app.core import ai_service
 
 
@@ -102,7 +103,7 @@ class ClassificationFeedbackService:
         self.db.add(feedback)
         self.db.flush([feedback])
 
-        embedding = get_embedding(text)
+        embedding = ensure_dimension(get_embedding(text))
         vector_entry = VectorStore(
             chunk_text=text,
             embedding=embedding,

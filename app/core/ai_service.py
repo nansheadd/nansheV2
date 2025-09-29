@@ -571,6 +571,31 @@ def generate_writing_system_lesson(course_title: str, chapter_title: str, model_
         logger.error(f"Erreur de génération de leçon théorique pour '{chapter_title}': {e}")
         return "Erreur lors de la génération de cette leçon."
 
+
+def generate_language_character_sets(
+    language: str,
+    *,
+    title: str | None = None,
+    model_choice: str,
+    **kwargs,
+) -> List[Dict[str, Any]]:
+    logger.info("IA Service: Génération du jeu de caractères pour '%s'", language)
+    system_prompt = prompt_manager.get_prompt(
+        "language_generation.character_sets",
+        title=title or language,
+        ensure_json=True,
+        **kwargs,
+    )
+    user_prompt = f"Dresse les jeux de caractères pertinents pour {language}."
+    try:
+        data = _call_ai_model_json(user_prompt, model_choice, system_prompt=system_prompt)
+        character_sets = data.get("character_sets")
+        if isinstance(character_sets, list):
+            return character_sets
+    except Exception as exc:  # pragma: no cover - réseaux externes
+        logger.error("Erreur de génération des caractères pour '%s': %s", language, exc)
+    return []
+
 def analyze_user_essay(prompt: str, guidelines: str, user_essay: str, model_choice: str) -> Dict[str, Any]:
     system_prompt = prompt_manager.get_prompt("analysis.analyze_essay", prompt=prompt, guidelines=guidelines, ensure_json=True)
     user_prompt = f"Voici l'essai : \"{user_essay}\""

@@ -1,6 +1,16 @@
 import logging
 import json
 from typing import List, Dict, Any, Optional
+
+from app.data.language_assets import (
+    FALLBACK_CHARACTER_SETS,
+    FALLBACK_DIALOGUES,
+    FALLBACK_GRAMMAR,
+    FALLBACK_TRANSLATION_PAIRS,
+    FALLBACK_VOCABULARY,
+    LANGUAGE_CODE_MAP,
+    normalise_language_key,
+)
 from sqlalchemy.orm import Session
 from app.models.capsule.capsule_model import Capsule
 from app.models.capsule.molecule_model import Molecule
@@ -18,6 +28,47 @@ class ForeignBuilder(BaseCapsuleBuilder):
     """
     Builder spécialisé pour les langues, implémentant toutes les méthodes requises.
     """
+
+    SCRIPT_KEYWORDS = {
+        "alphabet",
+        "écriture",
+        "ecriture",
+        "hiragana",
+        "katakana",
+        "kanji",
+        "kana",
+        "prononciation",
+        "pronunciation",
+        "script",
+        "lettres",
+    }
+
+    CONVERSATION_KEYWORDS = {
+        "conversation",
+        "dialogue",
+        "parler",
+        "situations",
+        "scenario",
+        "scénario",
+    }
+
+    TRANSLATION_KEYWORDS = {
+        "traduction",
+        "phrases",
+        "production",
+        "écriture",
+        "writing",
+        "expression",
+    }
+
+    DEFAULT_RECIPE = [
+        AtomContentType.LESSON,
+        AtomContentType.VOCABULARY,
+        AtomContentType.TRANSLATION,
+        AtomContentType.MATCHING,
+        AtomContentType.FLASHCARDS,
+        AtomContentType.QUIZ,
+    ]
 
     def __init__(
         self,
@@ -37,11 +88,608 @@ class ForeignBuilder(BaseCapsuleBuilder):
             capsule=capsule,
             source_material=source_material,
         )
+        self._language_key = normalise_language_key(capsule.main_skill)
+        self._language_code = LANGUAGE_CODE_MAP.get(self._language_key or "", None)
+        self._assets_cache: Dict[int, Dict[str, Any]] = {}
+
         try:
             self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         except Exception as e:
             self.openai_client = None
             logger.error(f"❌ Erreur de configuration OpenAI dans ForeignBuilder: {e}")
+
+    # ------------------------------------------------------------------
+    # Convenience helpers
+    # ------------------------------------------------------------------
+
+    def _coerce_atom_type(self, value: Any) -> AtomContentType:
+        if isinstance(value, AtomContentType):
+            return value
+        if isinstance(value, str):
+            try:
+                return AtomContentType(value)
+            except ValueError:
+                return AtomContentType(value.lower())
+        raise ValueError(f"Unsupported atom content type: {value!r}")
+
+    def _lang_code(self) -> Optional[str]:
+        return self._language_code
+
+    def _language_name(self) -> str:
+        return self.capsule.main_skill or "langue"
+
+    def _infer_cefr(self, molecule: Molecule) -> str:
+        """Approximate the CEFR level based on the granule order."""
+
+        granule = getattr(molecule, "granule", None)
+        order = getattr(granule, "order", None) or molecule.order or 1
+        if order <= 2:
+            return "A1"
+        if order <= 4:
+            return "A2"
+        if order <= 6:
+            return "B1"
+        if order <= 8:
+            return "B2"
+        if order <= 10:
+            return "C1"
+        return "C2"
+
+    def _is_script_molecule(self, molecule: Molecule) -> bool:
+        title = (molecule.title or "").lower()
+        return any(keyword in title for keyword in self.SCRIPT_KEYWORDS)
+
+    def _is_conversation_molecule(self, molecule: Molecule) -> bool:
+        title = (molecule.title or "").lower()
+        return any(keyword in title for keyword in self.CONVERSATION_KEYWORDS)
+
+    def _assets_for(self, molecule: Molecule) -> Dict[str, Any]:
+        cached = self._assets_cache.get(molecule.id)
+        if cached:
+            return cached
+
+        assets = self._build_assets(molecule)
+        self._assets_cache[molecule.id] = assets
+        return assets
+
+    def _build_assets(self, molecule: Molecule) -> Dict[str, Any]:
+        language = self._language_name()
+        lang_key = self._language_key or language.lower()
+        fallback_key = lang_key if lang_key in FALLBACK_VOCABULARY else None
+        cefr = self._infer_cefr(molecule)
+
+        pedago: Dict[str, Any] = {}
+        if self.openai_client:
+            try:
+                pedago = ai_service.generate_language_pedagogical_content(
+                    course_title=self.capsule.title or language,
+                    chapter_title=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                    lang_code=self._lang_code(),
+                )
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                logger.warning("Generation pédagogique indisponible: %s", exc)
+                pedago = {}
+
+        vocabulary = self._normalise_vocabulary(
+            pedago.get("vocabulary") if isinstance(pedago, dict) else None,
+            fallback_key,
+        )
+        grammar = self._normalise_grammar(
+            pedago.get("grammar") if isinstance(pedago, dict) else None,
+            fallback_key,
+        )
+
+        dialogue = self._build_dialogue_assets(molecule, vocabulary, grammar, fallback_key)
+        translations = self._build_translation_assets(fallback_key)
+        character_sets = self._build_character_sets_assets(molecule, fallback_key)
+        virtual_keyboard = self._build_virtual_keyboard(character_sets)
+        transliteration_map = self._build_transliteration_map(character_sets)
+
+        assets = {
+            "cefr": cefr,
+            "vocabulary": vocabulary,
+            "grammar": grammar,
+            "phrases": pedago.get("phrases", []) if isinstance(pedago, dict) else [],
+            "dialogue": dialogue,
+            "translations": translations,
+            "character_sets": character_sets,
+            "virtual_keyboard": virtual_keyboard,
+            "transliteration_map": transliteration_map,
+        }
+
+        assets["matching_pairs"] = [
+            {"left": item["term"], "right": item["translation_fr"], "id": item["id"]}
+            for item in vocabulary
+        ]
+
+        assets["flashcards"] = [
+            {
+                "id": entry["id"],
+                "front": entry["term"],
+                "front_extra": entry.get("transliteration", ""),
+                "back": entry["translation_fr"],
+                "example_tl": entry.get("example_tl"),
+                "example_fr": entry.get("example_fr"),
+            }
+            for entry in vocabulary
+        ]
+
+        return assets
+
+    def _normalise_vocabulary(
+        self,
+        payload: Optional[List[Dict[str, Any]]],
+        fallback_key: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        source = payload if isinstance(payload, list) and payload else []
+        if not source and fallback_key:
+            source = FALLBACK_VOCABULARY.get(fallback_key, [])
+
+        normalised: List[Dict[str, Any]] = []
+        for index, entry in enumerate(source):
+            if not isinstance(entry, dict):
+                continue
+            term = entry.get("term") or entry.get("word")
+            translation = entry.get("translation_fr") or entry.get("meaning")
+            if not term or not translation:
+                continue
+            normalised.append(
+                {
+                    "id": entry.get("id") or f"vocab-{index}",
+                    "term": term,
+                    "lemma": entry.get("lemma", term),
+                    "translation_fr": translation,
+                    "pos": entry.get("pos", ""),
+                    "gender": entry.get("gender", "-"),
+                    "register": entry.get("register", "neutre"),
+                    "ipa": entry.get("ipa", ""),
+                    "transliteration": entry.get("transliteration") or entry.get("reading", ""),
+                    "example_tl": entry.get("example_tl") or entry.get("example"),
+                    "example_fr": entry.get("example_fr") or entry.get("translation_example"),
+                    "tags": entry.get("tags", []),
+                }
+            )
+        return normalised
+
+    def _build_virtual_keyboard(self, character_sets: List[Dict[str, Any]]) -> List[str]:
+        keys: List[str] = []
+        for char_set in character_sets or []:
+            for character in char_set.get("characters", []):
+                symbol = character.get("symbol")
+                if symbol and symbol not in keys:
+                    keys.append(symbol)
+        return keys
+
+    def _build_transliteration_map(self, character_sets: List[Dict[str, Any]]) -> Dict[str, str]:
+        mapping: Dict[str, str] = {}
+        for char_set in character_sets or []:
+            for character in char_set.get("characters", []):
+                symbol = character.get("symbol")
+                roman = character.get("romanization")
+                if symbol and roman:
+                    mapping.setdefault(roman.lower(), symbol)
+        return mapping
+
+    def _normalise_grammar(
+        self,
+        payload: Optional[List[Dict[str, Any]]],
+        fallback_key: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        source = payload if isinstance(payload, list) and payload else []
+        if not source and fallback_key:
+            source = FALLBACK_GRAMMAR.get(fallback_key, [])
+        normalised: List[Dict[str, Any]] = []
+        for index, entry in enumerate(source):
+            if not isinstance(entry, dict):
+                continue
+            rule = entry.get("rule_name") or entry.get("name")
+            explanation = entry.get("explanation_fr") or entry.get("description")
+            if not rule:
+                continue
+            normalised.append(
+                {
+                    "id": entry.get("id") or f"grammar-{index}",
+                    "rule_name": rule,
+                    "explanation_fr": explanation or "",
+                    "patterns": entry.get("patterns", []),
+                    "examples": entry.get("examples", []),
+                    "common_errors_fr": entry.get("common_errors_fr", []),
+                }
+            )
+        return normalised
+
+    def _build_dialogue_assets(
+        self,
+        molecule: Molecule,
+        vocabulary: List[Dict[str, Any]],
+        grammar: List[Dict[str, Any]],
+        fallback_key: Optional[str],
+    ) -> Dict[str, Any]:
+        dialogue_data: Optional[Dict[str, Any]] = None
+
+        if self.openai_client:
+            try:
+                raw = ai_service.generate_language_dialogue(
+                    course_title=self.capsule.title or self._language_name(),
+                    chapter_title=molecule.title,
+                    vocabulary=vocabulary,
+                    grammar=grammar,
+                    model_choice="gpt-5-mini-2025-08-07",
+                    target_cefr=self._infer_cefr(molecule),
+                    lang_code=self._lang_code(),
+                )
+                if raw:
+                    try:
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, dict) and parsed.get("dialogue"):
+                            dialogue_data = parsed["dialogue"]
+                    except json.JSONDecodeError:
+                        logger.warning("Dialogue JSON invalide, utilisation du fallback.")
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                logger.warning("G\u00e9n\u00e9ration de dialogue indisponible: %s", exc)
+
+        if dialogue_data is None and fallback_key:
+            dialogue_data = FALLBACK_DIALOGUES.get(fallback_key)
+
+        if not dialogue_data:
+            return {"setting": molecule.title, "turns": []}
+
+        vocab_index = {entry["id"]: entry for entry in vocabulary}
+
+        turns: List[Dict[str, Any]] = []
+        raw_turns = dialogue_data.get("turns", []) if isinstance(dialogue_data, dict) else []
+        for idx, turn in enumerate(raw_turns):
+            if not isinstance(turn, dict):
+                continue
+            speaker = str(turn.get("speaker", "")).strip() or ("A" if idx % 2 == 0 else "B")
+            is_user = bool(turn.get("is_user_turn")) or speaker.upper() in {"B", "YOU", "USER"}
+            keywords = turn.get("expected_keywords")
+            if not keywords:
+                keywords = []
+                for ref in turn.get("vocab_refs", []) or []:
+                    vocab_entry = vocab_index.get(ref)
+                    if vocab_entry:
+                        keywords.append(vocab_entry["term"])
+            turns.append(
+                {
+                    "speaker": speaker,
+                    "text_tl": turn.get("text_tl") or turn.get("text") or "",
+                    "transliteration": turn.get("transliteration", ""),
+                    "translation_fr": turn.get("translation_fr") or "",
+                    "notes_fr": turn.get("notes_fr") or "",
+                    "vocab_refs": turn.get("vocab_refs", []),
+                    "grammar_refs": turn.get("grammar_refs", []),
+                    "is_user_turn": is_user,
+                    "expected_keywords": keywords,
+                }
+            )
+
+        return {
+            "setting": dialogue_data.get("setting") or molecule.title,
+            "turns": turns,
+            "virtual_keyboard": assets.get("virtual_keyboard", []),
+            "transliteration_map": assets.get("transliteration_map", {}),
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "dialogue",
+                "language": self._lang_code() or self._language_name(),
+            },
+        }
+
+    def _build_translation_assets(self, fallback_key: Optional[str]) -> Dict[str, Any]:
+        data = FALLBACK_TRANSLATION_PAIRS.get(fallback_key or "", {})
+        fr_to_tl = data.get("fr_to_tl", [])
+        tl_to_fr = data.get("tl_to_fr", [])
+        return {
+            "fr_to_tl": fr_to_tl,
+            "tl_to_fr": tl_to_fr,
+        }
+
+    def _build_character_sets_assets(
+        self,
+        molecule: Molecule,
+        fallback_key: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        if not self._is_script_molecule(molecule):
+            return []
+
+        character_sets: List[Dict[str, Any]] = []
+        if self.openai_client:
+            try:
+                character_sets = ai_service.generate_language_character_sets(
+                    language=self._language_name(),
+                    title=molecule.title,
+                    model_choice="gpt-5-mini-2025-08-07",
+                    lang_code=self._lang_code(),
+                )
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                logger.warning("G\u00e9n\u00e9ration de jeu de caract\u00e8res indisponible: %s", exc)
+
+        if not character_sets and fallback_key:
+            character_sets = FALLBACK_CHARACTER_SETS.get(fallback_key, [])
+
+        return character_sets or []
+
+    # ------------------------------------------------------------------
+    # Atom builders
+    # ------------------------------------------------------------------
+
+    def _build_lesson_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        *,
+        context_atoms: List[Atom],
+        difficulty: Optional[str],
+    ) -> Dict[str, Any] | None:
+        cefr = assets.get("cefr")
+
+        if self._is_script_molecule(molecule):
+            lesson_text = ""
+            if self.openai_client:
+                try:
+                    lesson_text = ai_service.generate_writing_system_lesson(
+                        course_title=self._language_name(),
+                        chapter_title=molecule.title,
+                        model_choice="gpt-5-mini-2025-08-07",
+                        lang_code=self._lang_code(),
+                    )
+                except Exception as exc:  # pragma: no cover - defensive fallback
+                    logger.warning("G\u00e9n\u00e9ration de le\u00e7on d'\u00e9criture indisponible: %s", exc)
+            if not lesson_text:
+                characters = assets.get("character_sets", [])
+                bullet_lines = []
+                for char_set in characters[:1]:
+                    items = [
+                        f"- {item['symbol']} ({item.get('romanization', '')})"
+                        for item in char_set.get("characters", [])[:10]
+                    ]
+                    bullet_lines.extend(items)
+                lesson_text = "\n".join(
+                    [
+                        f"# {molecule.title}",
+                        "Cette le\u00e7on pr\u00e9sente les caract\u00e8res de base du syst\u00e8me d'\u00e9criture.",
+                        "", *bullet_lines
+                    ]
+                )
+            return {
+                "text": lesson_text,
+                "metadata": {
+                    "cefr": cefr,
+                    "learning_focus": "writing_system",
+                },
+            }
+
+        if self.atom_service:
+            lesson_content = self.atom_service.create_atom_content(
+                AtomContentType.LESSON,
+                molecule,
+                context_atoms,
+                difficulty=difficulty,
+            )
+            if lesson_content:
+                metadata = lesson_content.setdefault("metadata", {})
+                metadata.setdefault("cefr", cefr)
+                metadata.setdefault("learning_focus", "lesson")
+                metadata.setdefault("language", self._lang_code() or self._language_name())
+                return lesson_content
+
+        summary_lines = [f"# {molecule.title}", ""]
+        if assets.get("vocabulary"):
+            summary_lines.append("## Vocabulaire cl\u00e9")
+            for entry in assets["vocabulary"][:5]:
+                summary_lines.append(
+                    f"- {entry['term']} ({entry.get('transliteration', '')}) : {entry['translation_fr']}"
+                )
+        if assets.get("grammar"):
+            summary_lines.append("")
+            summary_lines.append("## Points de grammaire")
+            for item in assets["grammar"][:2]:
+                summary_lines.append(f"- **{item['rule_name']}** : {item.get('explanation_fr', '')}")
+
+        return {
+            "text": "\n".join(summary_lines),
+            "metadata": {
+                "cefr": cefr,
+                "learning_focus": "lesson",
+                "generated": "fallback",
+            },
+        }
+
+    def _build_vocabulary_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        items = assets.get("vocabulary", [])
+        if not items:
+            return None
+
+        content_items = []
+        for entry in items:
+            content_items.append(
+                {
+                    "id": entry["id"],
+                    "word": entry["term"],
+                    "reading": entry.get("transliteration", ""),
+                    "meaning": entry["translation_fr"],
+                    "ipa": entry.get("ipa", ""),
+                    "tags": entry.get("tags", []),
+                    "example": entry.get("example_tl"),
+                    "example_translation": entry.get("example_fr"),
+                }
+            )
+
+        return {
+            "prompt": f"Vocabulaire important : {molecule.title}",
+            "items": content_items,
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "vocabulary",
+                "language": self._lang_code() or self._language_name(),
+                "notebook_suggestions": [
+                    "Ajoute les mots que tu trouves difficiles dans ton carnet pour pouvoir les revoir.",
+                    "Note une phrase personnelle utilisant deux nouvelles expressions.",
+                ],
+                "srs_items": [entry["id"] for entry in items],
+            },
+        }
+
+    def _build_flashcards_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        cards = assets.get("flashcards", [])
+        if not cards:
+            return None
+        transformed = []
+        for card in cards:
+            front = card.get("front")
+            if card.get("front_extra"):
+                front = f"{front}\n({card['front_extra']})"
+            transformed.append(
+                {
+                    "id": card["id"],
+                    "front": front,
+                    "back": card.get("back"),
+                    "hint": card.get("example_fr"),
+                }
+            )
+        return {
+            "prompt": f"Révise les cartes du chapitre : {molecule.title}",
+            "cards": transformed,
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "flashcards",
+                "language": self._lang_code() or self._language_name(),
+                "srs_items": [card["id"] for card in cards],
+            },
+        }
+
+    def _build_matching_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        pairs = assets.get("matching_pairs", [])
+        if not pairs:
+            return None
+        return {
+            "prompt": f"Associe les mots {self._language_name()} avec leur traduction",
+            "pairs": pairs,
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "association",
+                "language": self._lang_code() or self._language_name(),
+            },
+        }
+
+    def _build_translation_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        data = assets.get("translations", {})
+        fr_to_tl = data.get("fr_to_tl", [])
+        tl_to_fr = data.get("tl_to_fr", [])
+        if not fr_to_tl and not tl_to_fr:
+            return None
+
+        directions: List[Dict[str, Any]] = []
+        if fr_to_tl:
+            directions.append(
+                {
+                    "id": "fr_to_target",
+                    "mode": "fr_to_target",
+                    "instruction": f"Traduisez du fran\u00e7ais vers le {self._language_name()}.",
+                    "items": fr_to_tl,
+                    "threshold": 0.6,
+                }
+            )
+        if tl_to_fr:
+            directions.append(
+                {
+                    "id": "target_to_fr",
+                    "mode": "target_to_fr",
+                    "instruction": f"Traduisez du {self._language_name()} vers le fran\u00e7ais.",
+                    "items": tl_to_fr,
+                    "threshold": 0.6,
+                }
+            )
+
+        return {
+            "prompt": f"Travail de traduction - {molecule.title}",
+            "directions": directions,
+            "virtual_keyboard": assets.get("virtual_keyboard", []),
+            "transliteration_map": assets.get("transliteration_map", {}),
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "translation",
+                "language": self._lang_code() or self._language_name(),
+            },
+        }
+
+    def _build_dialogue_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        dialogue = assets.get("dialogue")
+        if not dialogue:
+            return None
+        return {
+            "prompt": dialogue.get("setting") or molecule.title,
+            "turns": dialogue.get("turns", []),
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "dialogue",
+            },
+        }
+
+    def _build_character_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        character_sets = assets.get("character_sets", [])
+        if not character_sets:
+            return None
+
+        practice_items: List[Dict[str, Any]] = []
+        for char_set in character_sets:
+            for item in char_set.get("characters", [])[:12]:
+                practice_items.append(
+                    {
+                        "symbol": item.get("symbol"),
+                        "romanization": item.get("romanization"),
+                        "ipa": item.get("ipa", ""),
+                        "category": item.get("category", ""),
+                    }
+                )
+            if practice_items:
+                break
+
+        return {
+            "prompt": f"Pratique d'\u00e9criture : {molecule.title}",
+            "character_sets": character_sets,
+            "practice": {
+                "mode": "recognition",
+                "instructions": "Tape la romanisation pour chaque caract\u00e8re puis valide.",
+                "items": practice_items,
+            },
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "writing_system",
+            },
+        }
 
     def generate_learning_plan(self, db: Session, capsule: Capsule) -> dict | None:
         """
@@ -108,14 +756,23 @@ class ForeignBuilder(BaseCapsuleBuilder):
         """
         Définit les "recettes" pour les leçons de langue.
         """
-        title = molecule.title.lower()
-        if any(keyword in title for keyword in ["hiragana", "katakana", "alphabet", "écriture"]):
-            return [{"type": AtomContentType.LESSON}, {"type": AtomContentType.CHARACTER}, {"type": AtomContentType.QUIZ}]
-        if any(keyword in title for keyword in ["grammaire", "particules", "verbes", "conjugaison"]):
-             return [{"type": AtomContentType.LESSON}, {"type": AtomContentType.GRAMMAR}, {"type": AtomContentType.EXERCISE}]
-        if any(keyword in title for keyword in ["conversation", "dialogue", "salutations"]):
-            return [{"type": AtomContentType.LESSON}, {"type": AtomContentType.VOCABULARY}, {"type": AtomContentType.DIALOGUE}]
-        return [{"type": AtomContentType.LESSON}, {"type": AtomContentType.VOCABULARY}, {"type": AtomContentType.QUIZ}]
+        if self._is_script_molecule(molecule):
+            return [
+                {"type": AtomContentType.LESSON},
+                {"type": AtomContentType.CHARACTER},
+                {"type": AtomContentType.DIALOGUE},
+                {"type": AtomContentType.TRANSLATION},
+                {"type": AtomContentType.FLASHCARDS},
+                {"type": AtomContentType.MATCHING},
+                {"type": AtomContentType.QUIZ},
+            ]
+
+        recipe = list(self.DEFAULT_RECIPE)
+
+        if self._is_conversation_molecule(molecule):
+            recipe.insert(2, AtomContentType.DIALOGUE)
+
+        return [{"type": atom_type} for atom_type in recipe]
 
     # === IMPLÉMENTATION OBLIGATOIRE N°2 ===
     def _build_atom_content(
@@ -128,26 +785,42 @@ class ForeignBuilder(BaseCapsuleBuilder):
         """
         "Usine" de fabrication du contenu pour chaque type d'atome de langue.
         """
-        if not self.openai_client:
-            logger.error("Le client OpenAI n'est pas initialisé dans le ForeignBuilder.")
-            return None
+        assets = self._assets_for(molecule)
 
-        if atom_type == AtomContentType.LESSON:
-            system_prompt = "Tu es un professeur de langues. Rédige une leçon claire en Markdown. Réponds UNIQUEMENT avec un JSON: {\"text\": \"...\"}."
-            user_prompt = f"Rédige une leçon sur '{molecule.title}' pour un cours de {self.capsule.main_skill}."
-            return self._call_openai_for_json(user_prompt, system_prompt)
+        builders = {
+            AtomContentType.LESSON: self._build_lesson_atom,
+            AtomContentType.VOCABULARY: self._build_vocabulary_atom,
+            AtomContentType.FLASHCARDS: self._build_flashcards_atom,
+            AtomContentType.MATCHING: self._build_matching_atom,
+            AtomContentType.TRANSLATION: self._build_translation_atom,
+            AtomContentType.DIALOGUE: self._build_dialogue_atom,
+            AtomContentType.CHARACTER: self._build_character_atom,
+        }
 
-        if atom_type == AtomContentType.VOCABULARY:
-            system_prompt = "Tu es un lexicographe. Génère 10 mots de vocabulaire. Réponds UNIQUEMENT avec un JSON: {\"items\": [{\"word\": \"...\", \"reading\": \"...\", \"meaning\": \"...\"}]}."
-            user_prompt = f"Génère le vocabulaire essentiel pour la leçon '{molecule.title}'."
-            return self._call_openai_for_json(user_prompt, system_prompt)
+        builder = builders.get(atom_type)
+        if builder:
+            content = builder(molecule, assets, context_atoms=context_atoms, difficulty=difficulty)
+            if content:
+                self._save_atom_to_vector_store(
+                    self.db,
+                    self.capsule,
+                    molecule,
+                    atom_type.value,
+                    content,
+                )
+            return content
 
         if self.atom_service:
-            generated = self.atom_service.create_atom_content(atom_type, molecule, context_atoms, difficulty=difficulty)
+            generated = self.atom_service.create_atom_content(
+                atom_type,
+                molecule,
+                context_atoms,
+                difficulty=difficulty,
+            )
             if generated:
                 return generated
 
-        logger.warning(f"Aucun fabricant n'est implémenté pour le type d'atome '{atom_type.name}'.")
+        logger.warning("Aucun constructeur disponible pour l'atome %s", atom_type.name)
         return None
 
     def _call_openai_for_json(self, user_prompt: str, system_prompt: str) -> Dict[str, Any] | None:

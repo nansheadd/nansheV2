@@ -6,6 +6,7 @@ from app.db.base_class import Base
 from app.models.user.user_model import User
 from app.models.user.notification_model import Notification
 from app.models.user.badge_model import Badge, UserBadge
+from app.models.email.email_token import EmailToken
 
 # Capsule & contenu pédagogique
 from app.models.capsule.capsule_model import Capsule
@@ -54,6 +55,7 @@ __all__ = (
     "Notification",
     "Badge",
     "UserBadge",
+    "EmailToken",
     "Capsule",
     "Granule",
     "Molecule",

@@ -55,6 +55,22 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         logger.info(f"--> [BASE BUILDER] get_details appelé pour la capsule '{capsule.title}'.")
         return {}
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _coerce_atom_type(self, value: Any) -> AtomContentType:
+        if isinstance(value, AtomContentType):
+            return value
+        if isinstance(value, str):
+            try:
+                return AtomContentType(value)
+            except ValueError:
+                return AtomContentType(value.lower())
+        if isinstance(value, dict) and "type" in value:
+            return self._coerce_atom_type(value["type"])
+        raise ValueError(f"Unsupported atom content type: {value!r}")
+
     def create_capsule(self, db: Session, user, title: str, classification: dict):
         logger.info("--> [BASE BUILDER] Création de l'entité Capsule (sans plan)...")
         new_capsule = Capsule(
@@ -275,14 +291,39 @@ class BaseCapsuleBuilder(ABC): # <-- On le transforme en classe abstraite
         core_atoms = [atom for atom in existing_atoms if not getattr(atom, "is_bonus", False)]
         bonus_atoms = [atom for atom in existing_atoms if getattr(atom, "is_bonus", False)]
 
+        # --- Déduplication des anciens atomes (une occurrence par type) ---
+        duplicates: list[Atom] = []
+        bucket_map: Dict[AtomContentType, list[Atom]] = {}
+        for atom in core_atoms:
+            bucket = bucket_map.setdefault(self._coerce_atom_type(atom.content_type), [])
+            bucket.append(atom)
+        for bucket in bucket_map.values():
+            if len(bucket) > 1:
+                bucket.sort(key=lambda a: a.id or 0)
+                duplicates.extend(bucket[1:])
+        for duplicate in duplicates:
+            logger.info(
+                "[BASE BUILDER] Suppression de l'atome dupliqué %s (%s) sur '%s'",
+                duplicate.id,
+                duplicate.content_type,
+                molecule.title,
+            )
+            self.db.delete(duplicate)
+        if duplicates:
+            self.db.flush()
+            molecule = self.db.get(Molecule, molecule.id)
+            existing_atoms = sorted(molecule.atoms, key=lambda a: (a.order or 0, a.id))
+            core_atoms = [atom for atom in existing_atoms if not getattr(atom, "is_bonus", False)]
+            bonus_atoms = [atom for atom in existing_atoms if getattr(atom, "is_bonus", False)]
+
         atoms_by_type: dict[AtomContentType, list[Atom]] = {}
         for atom in core_atoms:
-            atoms_by_type.setdefault(atom.content_type, []).append(atom)
+            atoms_by_type.setdefault(self._coerce_atom_type(atom.content_type), []).append(atom)
 
         ordered_atoms: list[Atom] = []
 
         for atom_info in recipe:
-            atom_type: AtomContentType = atom_info["type"]
+            atom_type: AtomContentType = self._coerce_atom_type(atom_info["type"])
             atom_title = atom_info.get("title", "...")
             atom_difficulty = atom_info.get("difficulty")
 
