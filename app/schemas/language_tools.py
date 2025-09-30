@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -56,3 +56,69 @@ class AvailableLanguageOut(BaseModel):
     label: str
     code: str
     capsule_ids: List[int] = Field(default_factory=list)
+
+
+class VocabularyWordOut(BaseModel):
+    vocabulary_id: str
+    term: str
+    translation_fr: str
+    transliteration: Optional[str] = None
+    example: Optional[str] = None
+    example_translation: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    ipa: Optional[str] = None
+    strength_target_to_fr: float = Field(0.0, ge=0.0, le=1.0)
+    strength_fr_to_target: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class VocabularySetOut(BaseModel):
+    name: str
+    notes: Optional[str] = None
+    capsule_id: Optional[int] = None
+    molecule_id: Optional[int] = None
+    words: List[VocabularyWordOut]
+
+
+class VocabularyPracticeSummaryOut(BaseModel):
+    target_to_fr: PracticeModeSummaryOut
+    fr_to_target: PracticeModeSummaryOut
+
+
+class VocabularyTrainerResponse(BaseModel):
+    language: str
+    language_code: Optional[str] = None
+    vocabulary_sets: List[VocabularySetOut]
+    practice_summary: VocabularyPracticeSummaryOut
+
+
+class VocabularySessionItem(BaseModel):
+    vocabulary_id: str
+    direction: str = Field(pattern="^(target_to_fr|fr_to_target)$")
+    success: bool
+
+
+class VocabularySessionCreate(BaseModel):
+    items: List[VocabularySessionItem]
+
+
+class DialogueHistoryTurn(BaseModel):
+    speaker: Literal["user", "assistant"]
+    message: str
+
+
+class DialoguePracticeRequest(BaseModel):
+    language: str
+    language_code: Optional[str] = None
+    scenario: str
+    cefr: Optional[str] = None
+    history: List[DialogueHistoryTurn] = Field(default_factory=list)
+    user_message: str
+    focus_vocabulary: List[VocabularyWordOut] = Field(default_factory=list)
+
+
+class DialoguePracticeResponse(BaseModel):
+    reply_tl: str
+    reply_transliteration: Optional[str] = None
+    reply_translation_fr: Optional[str] = None
+    feedback_fr: Optional[str] = None
+    suggested_keywords: List[str] = Field(default_factory=list)

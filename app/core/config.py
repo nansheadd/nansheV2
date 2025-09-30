@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     SUPABASE_VECTOR_BATCH_SIZE: int = 64
     SUPABASE_VECTOR_SYNC_ON_STARTUP: bool = True
 
+    # Performance instrumentation
+    SQLALCHEMY_SLOW_QUERY_THRESHOLD_MS: int = 300
+    REQUEST_SLOW_THRESHOLD_MS: int = 400
+
     # Classification configuration
     DB_CLASSIFIER_DEFAULT_THRESHOLD: float = 0.2
 

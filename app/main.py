@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,11 +44,45 @@ from app.admin import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_REQUEST_SLOW_THRESHOLD_MS = max(getattr(settings, "REQUEST_SLOW_THRESHOLD_MS", 0) or 0, 0)
+
 # --- Initialisation de l'application FastAPI ---
 app = FastAPI(
     title="Nanshe API V2",
     openapi_url="/api/v2/openapi.json"
 )
+
+
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    if _REQUEST_SLOW_THRESHOLD_MS == 0:
+        return await call_next(request)
+
+    start = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (perf_counter() - start) * 1000.0
+        if elapsed_ms >= _REQUEST_SLOW_THRESHOLD_MS:
+            logger.warning(
+                "Requête lente avec erreur (%.1f ms) %s %s",
+                elapsed_ms,
+                request.method,
+                request.url.path,
+            )
+        raise
+
+    elapsed_ms = (perf_counter() - start) * 1000.0
+    if elapsed_ms >= _REQUEST_SLOW_THRESHOLD_MS:
+        logger.warning(
+            "Requête lente (%.1f ms) %s %s -> %s",
+            elapsed_ms,
+            request.method,
+            request.url.path,
+            response.status_code,
+        )
+
+    return response
 def _sanitize_origin(origin: str | None) -> str | None:
     if not origin:
         return None

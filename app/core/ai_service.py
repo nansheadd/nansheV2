@@ -560,6 +560,95 @@ def generate_language_dialogue(course_title: str, chapter_title: str, vocabulary
         logger.error(f"Erreur de génération de dialogue pour '{chapter_title}': {e}")
         return "Le dialogue n'a pas pu être généré en raison d'une erreur technique."
 
+
+def respond_language_dialogue(
+    *,
+    language_name: str,
+    lang_code: Optional[str],
+    scenario: str,
+    history: List[Dict[str, str]],
+    user_message: str,
+    cefr: Optional[str] = None,
+    focus_vocabulary: Optional[List[Dict[str, Any]]] = None,
+    model_choice: str = "gpt-5-mini-2025-08-07",
+) -> Dict[str, Any]:
+    if not openai_client:
+        raise ConnectionError("Le client OpenAI n'est pas configuré.")
+
+    vocab_lines: List[str] = []
+    if focus_vocabulary:
+        for entry in focus_vocabulary:
+            term = entry.get("term")
+            translation = entry.get("translation_fr")
+            if not term or not translation:
+                continue
+            transliteration = entry.get("transliteration")
+            hint = f"{term} = {translation}"
+            if transliteration:
+                hint += f" ({transliteration})"
+            vocab_lines.append(hint)
+
+    vocab_block = "\n".join(vocab_lines) if vocab_lines else "Aucun mot imposé."
+
+    history_lines: List[str] = []
+    for turn in history:
+        speaker = (turn.get("speaker") or "user").strip().lower()
+        message = turn.get("message") or ""
+        label = "Apprenant" if speaker == "user" else "Tuteur"
+        history_lines.append(f"{label}: {message}")
+    if not history_lines:
+        history_lines.append("Aucun échange précédent.")
+
+    level = cefr or "A1"
+    language_label = language_name or "langue cible"
+    code_info = f" (code: {lang_code})" if lang_code else ""
+
+    system_prompt = (
+        "Tu es un partenaire de conversation bienveillant pour un apprenant."\
+        f" Tu t'exprimes en {language_label}{code_info} et tu aides un apprenant de niveau {level}."\
+        f" Le contexte est: {scenario}."\
+        " Réponds avec chaleur, pose une question de relance et encourage l'apprenant."\
+        " Fournis ta réponse finale en JSON strict avec les clés suivantes: "
+        "reply_tl (ta réponse dans la langue cible), "
+        "reply_transliteration (romanisation ou chaîne vide si non pertinent), "
+        "reply_translation_fr (traduction française concise), "
+        "feedback_fr (conseil en français pour l'apprenant) et "
+        "suggested_keywords (liste de 3 mots ou expressions utiles en langue cible)."
+        " Évite tout texte hors du JSON."
+    )
+
+    user_prompt = (
+        "Vocabulaire recommandé:\n"
+        f"{vocab_block}\n\n"
+        "Historique de l'échange:\n"
+        f"{chr(10).join(history_lines)}\n\n"
+        "Nouvelle intervention de l'apprenant:\n"
+        f"{user_message}\n\n"
+        "Produis maintenant la réponse JSON."
+    )
+
+    try:
+        response = openai_client.chat.completions.create(
+            model=model_choice,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        content = response.choices[0].message.content if response.choices else "{}"
+        return json.loads(content or "{}")
+    except Exception as exc:
+        logger.error("Erreur lors de la réponse au dialogue de langue: %s", exc, exc_info=True)
+        return {
+            "reply_tl": "Je rencontre un petit problème technique, reformulons ensemble dans un instant.",
+            "reply_transliteration": "",
+            "reply_translation_fr": "Je rencontre un souci technique, reformulons ensemble dans un instant.",
+            "feedback_fr": "Réessaie dans quelques secondes, la connexion à l'assistant est instable.",
+            "suggested_keywords": [],
+        }
+
 def generate_writing_system_lesson(course_title: str, chapter_title: str, model_choice: str, **kwargs) -> str:
     logger.info(f"IA Service: Génération de la leçon théorique pour '{chapter_title}'")
     system_prompt = prompt_manager.get_prompt("language_generation.writing_system_lesson", course_title=course_title, chapter_title=chapter_title, ensure_json=True, **kwargs)

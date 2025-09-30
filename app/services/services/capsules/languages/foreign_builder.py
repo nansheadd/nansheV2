@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 from app.data.language_assets import (
     FALLBACK_CHARACTER_SETS,
@@ -65,6 +65,7 @@ class ForeignBuilder(BaseCapsuleBuilder):
         AtomContentType.LESSON,
         AtomContentType.VOCABULARY,
         AtomContentType.TRANSLATION,
+        AtomContentType.DIALOGUE_PRACTICE,
         AtomContentType.MATCHING,
         AtomContentType.FLASHCARDS,
         AtomContentType.QUIZ,
@@ -185,6 +186,20 @@ class ForeignBuilder(BaseCapsuleBuilder):
         character_sets = self._build_character_sets_assets(molecule, fallback_key)
         virtual_keyboard = self._build_virtual_keyboard(character_sets)
         transliteration_map = self._build_transliteration_map(character_sets)
+        character_practice = self._build_character_practice(
+            character_sets,
+            virtual_keyboard,
+            transliteration_map,
+        )
+        character_flashcards = self._build_character_flashcards(character_sets)
+
+        if dialogue and isinstance(dialogue, dict):
+            metadata = dialogue.setdefault("metadata", {})
+            metadata.setdefault("cefr", cefr)
+            metadata.setdefault("learning_focus", "dialogue")
+            metadata.setdefault("language", self._lang_code() or self._language_name())
+            dialogue["virtual_keyboard"] = virtual_keyboard
+            dialogue["transliteration_map"] = transliteration_map
 
         assets = {
             "cefr": cefr,
@@ -196,6 +211,8 @@ class ForeignBuilder(BaseCapsuleBuilder):
             "character_sets": character_sets,
             "virtual_keyboard": virtual_keyboard,
             "transliteration_map": transliteration_map,
+            "character_practice": character_practice,
+            "character_flashcards": character_flashcards,
         }
 
         assets["matching_pairs"] = [
@@ -368,10 +385,7 @@ class ForeignBuilder(BaseCapsuleBuilder):
         return {
             "setting": dialogue_data.get("setting") or molecule.title,
             "turns": turns,
-            "virtual_keyboard": assets.get("virtual_keyboard", []),
-            "transliteration_map": assets.get("transliteration_map", {}),
             "metadata": {
-                "cefr": assets.get("cefr"),
                 "learning_focus": "dialogue",
                 "language": self._lang_code() or self._language_name(),
             },
@@ -410,6 +424,117 @@ class ForeignBuilder(BaseCapsuleBuilder):
             character_sets = FALLBACK_CHARACTER_SETS.get(fallback_key, [])
 
         return character_sets or []
+
+    def _build_character_practice(
+        self,
+        character_sets: List[Dict[str, Any]],
+        virtual_keyboard: List[str],
+        transliteration_map: Dict[str, str],
+    ) -> Dict[str, Any]:
+        if not character_sets:
+            return {}
+
+        practice_items: List[Dict[str, Any]] = []
+        seen: Set[Tuple[str, str]] = set()
+        limit = 12
+
+        for set_index, char_set in enumerate(character_sets):
+            set_name = char_set.get("name", f"Set {set_index + 1}")
+            for character in char_set.get("characters", []):
+                symbol = character.get("symbol")
+                roman = character.get("romanization")
+                if not symbol or not roman:
+                    continue
+                key = (symbol, roman)
+                if key in seen:
+                    continue
+                seen.add(key)
+                practice_items.append(
+                    {
+                        "symbol": symbol,
+                        "romanization": roman,
+                        "ipa": character.get("ipa", ""),
+                        "category": character.get("category", ""),
+                        "set_name": set_name,
+                        "character_id": character.get("character_id")
+                        or f"{self._lang_code() or 'xx'}:{set_name}:{symbol}",
+                    }
+                )
+                if len(practice_items) >= limit:
+                    break
+            if len(practice_items) >= limit:
+                break
+
+        if not practice_items:
+            return {}
+
+        recognition_items = [dict(item) for item in practice_items]
+        production_items = [dict(item) for item in practice_items]
+
+        modes = [
+            {
+                "id": "recognition",
+                "label": "Reconnaître les caractères",
+                "prompt_label": "Caractère",
+                "answer_label": "Romanisation",
+                "instructions": "Observe le caractère et saisis sa romanisation.",
+                "items": recognition_items,
+            },
+            {
+                "id": "production",
+                "label": "Écrire le caractère",
+                "prompt_label": "Romanisation",
+                "answer_label": "Caractère",
+                "instructions": "Lis la romanisation et écris le caractère correspondant.",
+                "items": production_items,
+            },
+        ]
+
+        return {
+            "default_mode": "recognition",
+            "modes": modes,
+            "items": recognition_items,
+            "virtual_keyboard": virtual_keyboard,
+            "transliteration_map": transliteration_map,
+        }
+
+    def _build_character_flashcards(
+        self,
+        character_sets: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        cards: List[Dict[str, Any]] = []
+        if not character_sets:
+            return cards
+
+        for set_index, char_set in enumerate(character_sets):
+            set_name = char_set.get("name", f"set-{set_index + 1}")
+            for index, character in enumerate(char_set.get("characters", [])):
+                symbol = character.get("symbol")
+                if not symbol:
+                    continue
+                roman = character.get("romanization", "")
+                ipa = character.get("ipa")
+                category = character.get("category")
+                back_lines = []
+                if roman:
+                    back_lines.append(roman)
+                if ipa:
+                    back_lines.append(f"IPA : {ipa}")
+                if category:
+                    back_lines.append(f"Catégorie : {category}")
+
+                card_id = f"char-{self._lang_code() or 'xx'}-{set_index}-{index}"
+                cards.append(
+                    {
+                        "id": card_id,
+                        "front": symbol,
+                        "front_extra": roman,
+                        "back": "\n".join(back_lines) or roman or symbol,
+                        "hint": None,
+                    }
+                )
+
+        return cards
 
     # ------------------------------------------------------------------
     # Atom builders
@@ -543,20 +668,31 @@ class ForeignBuilder(BaseCapsuleBuilder):
         assets: Dict[str, Any],
         **_: Any,
     ) -> Dict[str, Any] | None:
-        cards = assets.get("flashcards", [])
+        cards: List[Dict[str, Any]] = []
+        if self._is_script_molecule(molecule):
+            cards.extend(assets.get("character_flashcards", []))
+        cards.extend(assets.get("flashcards", []))
+
         if not cards:
             return None
         transformed = []
+        seen_ids: Set[str] = set()
         for card in cards:
-            front = card.get("front")
+            if not isinstance(card, dict):
+                continue
+            card_id = str(card.get("id") or f"flash-{len(transformed)}")
+            if card_id in seen_ids:
+                continue
+            seen_ids.add(card_id)
+            front = card.get("front", "")
             if card.get("front_extra"):
                 front = f"{front}\n({card['front_extra']})"
             transformed.append(
                 {
-                    "id": card["id"],
+                    "id": card_id,
                     "front": front,
                     "back": card.get("back"),
-                    "hint": card.get("example_fr"),
+                    "hint": card.get("example_fr") or card.get("hint"),
                 }
             )
         return {
@@ -566,7 +702,7 @@ class ForeignBuilder(BaseCapsuleBuilder):
                 "cefr": assets.get("cefr"),
                 "learning_focus": "flashcards",
                 "language": self._lang_code() or self._language_name(),
-                "srs_items": [card["id"] for card in cards],
+                "srs_items": [entry["id"] for entry in transformed],
             },
         }
 
@@ -653,6 +789,87 @@ class ForeignBuilder(BaseCapsuleBuilder):
             },
         }
 
+    def _build_dialogue_practice_atom(
+        self,
+        molecule: Molecule,
+        assets: Dict[str, Any],
+        **_: Any,
+    ) -> Dict[str, Any] | None:
+        dialogue = assets.get("dialogue") or {}
+        scenario = dialogue.get("setting") or molecule.title
+        turns = dialogue.get("turns", []) if isinstance(dialogue, dict) else []
+
+        focus_vocab: List[Dict[str, Any]] = []
+        for entry in assets.get("vocabulary", [])[:10]:
+            focus_vocab.append(
+                {
+                    "term": entry.get("term", ""),
+                    "translation_fr": entry.get("translation_fr", ""),
+                    "transliteration": entry.get("transliteration") or entry.get("reading"),
+                    "tags": entry.get("tags", []),
+                    "ipa": entry.get("ipa", ""),
+                }
+            )
+
+        grammar_focus: List[Dict[str, Any]] = []
+        for rule in assets.get("grammar", [])[:3]:
+            grammar_focus.append(
+                {
+                    "rule_name": rule.get("rule_name", ""),
+                    "explanation_fr": rule.get("explanation_fr", ""),
+                }
+            )
+
+        practice_guidelines = [
+            "Réponds en plusieurs phrases courtes en restant dans le contexte.",
+            "Réutilise un mot clé du vocabulaire quand c'est pertinent.",
+            "Pose régulièrement une question de relance à ton interlocuteur.",
+        ]
+
+        seed_turns = []
+        for turn in turns[:6]:
+            if not isinstance(turn, dict):
+                continue
+            seed_turns.append(
+                {
+                    "speaker": turn.get("speaker"),
+                    "text_tl": turn.get("text_tl") or turn.get("text"),
+                    "translation_fr": turn.get("translation_fr"),
+                    "transliteration": turn.get("transliteration"),
+                }
+            )
+
+        ai_context = {
+            "persona": "Tu es un partenaire de conversation bienveillant qui aide un apprenant à pratiquer.",
+            "scenario": scenario,
+            "goals": [
+                "Encourager l'apprenant à parler librement dans la langue cible.",
+                "Introduire ou reformuler le vocabulaire du chapitre.",
+                "Donner un retour bienveillant et des suggestions concrètes en français.",
+            ],
+        }
+
+        return {
+            "prompt": f"Atelier de conversation : {molecule.title}",
+            "scenario": scenario,
+            "language_name": self._language_name(),
+            "language_code": self._lang_code(),
+            "cefr": assets.get("cefr"),
+            "seed_turns": seed_turns,
+            "focus_vocabulary": focus_vocab,
+            "grammar_focus": grammar_focus,
+            "practice_guidelines": practice_guidelines,
+            "virtual_keyboard": assets.get("virtual_keyboard", []),
+            "transliteration_map": assets.get("transliteration_map", {}),
+            "ai_context": ai_context,
+            "metadata": {
+                "cefr": assets.get("cefr"),
+                "learning_focus": "dialogue_practice",
+                "language": self._lang_code() or self._language_name(),
+            },
+        }
+
+
     def _build_character_atom(
         self,
         molecule: Molecule,
@@ -663,28 +880,103 @@ class ForeignBuilder(BaseCapsuleBuilder):
         if not character_sets:
             return None
 
-        practice_items: List[Dict[str, Any]] = []
-        for char_set in character_sets:
-            for item in char_set.get("characters", [])[:12]:
-                practice_items.append(
+        practice_data = assets.get("character_practice") or {}
+        modes_source = practice_data.get("modes") or []
+        sanitized_modes: List[Dict[str, Any]] = []
+
+        def _normalise_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            cleaned: List[Dict[str, Any]] = []
+            seen_local: Set[str] = set()
+            for entry in items:
+                if not isinstance(entry, dict):
+                    continue
+                symbol = entry.get("symbol")
+                roman = entry.get("romanization")
+                if not symbol or not roman:
+                    continue
+                key = f"{symbol}:{roman}"
+                if key in seen_local:
+                    continue
+                seen_local.add(key)
+                cleaned.append(
                     {
-                        "symbol": item.get("symbol"),
-                        "romanization": item.get("romanization"),
-                        "ipa": item.get("ipa", ""),
-                        "category": item.get("category", ""),
+                        "symbol": symbol,
+                        "romanization": roman,
+                        "ipa": entry.get("ipa", ""),
+                        "category": entry.get("category", ""),
+                        "set_name": entry.get("set_name", ""),
+                        "character_id": entry.get("character_id"),
                     }
                 )
-            if practice_items:
-                break
+            return cleaned
+
+        for mode in modes_source:
+            if not isinstance(mode, dict):
+                continue
+            normalised_items = _normalise_items(mode.get("items", []))
+            if not normalised_items:
+                continue
+            sanitized_modes.append(
+                {
+                    "id": mode.get("id", "mode"),
+                    "label": mode.get("label") or "Mode",
+                    "prompt_label": mode.get("prompt_label", ""),
+                    "answer_label": mode.get("answer_label", ""),
+                    "instructions": mode.get("instructions", ""),
+                    "items": normalised_items,
+                }
+            )
+
+        if not sanitized_modes:
+            fallback_items: List[Dict[str, Any]] = []
+            for char_set in character_sets:
+                for item in char_set.get("characters", [])[:12]:
+                    symbol = item.get("symbol")
+                    roman = item.get("romanization")
+                    if not symbol or not roman:
+                        continue
+                    fallback_items.append(
+                        {
+                            "symbol": symbol,
+                            "romanization": roman,
+                            "ipa": item.get("ipa", ""),
+                            "category": item.get("category", ""),
+                            "set_name": char_set.get("name", ""),
+                            "character_id": item.get("character_id"),
+                        }
+                    )
+                if fallback_items:
+                    break
+            if fallback_items:
+                sanitized_modes = [
+                    {
+                        "id": "recognition",
+                        "label": "Reconnaître les caractères",
+                        "prompt_label": "Caractère",
+                        "answer_label": "Romanisation",
+                        "instructions": "Observe le caractère et saisis sa romanisation.",
+                        "items": fallback_items,
+                    }
+                ]
+
+        if not sanitized_modes:
+            return None
+
+        default_mode = practice_data.get("default_mode") or sanitized_modes[0]["id"]
+        practice_payload = {
+            "default_mode": default_mode,
+            "modes": sanitized_modes,
+            "items": sanitized_modes[0].get("items", []),
+            "virtual_keyboard": practice_data.get("virtual_keyboard")
+            or assets.get("virtual_keyboard", []),
+            "transliteration_map": practice_data.get("transliteration_map")
+            or assets.get("transliteration_map", {}),
+        }
 
         return {
-            "prompt": f"Pratique d'\u00e9criture : {molecule.title}",
+            "prompt": f"Pratique d'écriture : {molecule.title}",
             "character_sets": character_sets,
-            "practice": {
-                "mode": "recognition",
-                "instructions": "Tape la romanisation pour chaque caract\u00e8re puis valide.",
-                "items": practice_items,
-            },
+            "practice": practice_payload,
             "metadata": {
                 "cefr": assets.get("cefr"),
                 "learning_focus": "writing_system",
@@ -761,6 +1053,7 @@ class ForeignBuilder(BaseCapsuleBuilder):
                 {"type": AtomContentType.LESSON},
                 {"type": AtomContentType.CHARACTER},
                 {"type": AtomContentType.DIALOGUE},
+                {"type": AtomContentType.DIALOGUE_PRACTICE},
                 {"type": AtomContentType.TRANSLATION},
                 {"type": AtomContentType.FLASHCARDS},
                 {"type": AtomContentType.MATCHING},
@@ -794,6 +1087,7 @@ class ForeignBuilder(BaseCapsuleBuilder):
             AtomContentType.MATCHING: self._build_matching_atom,
             AtomContentType.TRANSLATION: self._build_translation_atom,
             AtomContentType.DIALOGUE: self._build_dialogue_atom,
+            AtomContentType.DIALOGUE_PRACTICE: self._build_dialogue_practice_atom,
             AtomContentType.CHARACTER: self._build_character_atom,
         }
 

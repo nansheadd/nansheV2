@@ -39,6 +39,7 @@ class AtomContentType(str, enum.Enum):
     LIVE_CODE_EXECUTOR = "live_code_executor" # Environnement d'exécution de code (Prog)
     CODE_SANDBOX_SETUP = "code_sandbox_setup" # Instructions pour ouvrir l'IDE/terminal sécurisé (Prog)
     CODE_PROJECT_BRIEF = "code_project_brief" # Projet de validation guidé pour une molécule (Prog)
+    DIALOGUE_PRACTICE = "dialogue_practice"   # Atelier de conversation assistée par IA
 
     # --- 4. Atomes d'ÉVALUATION (Assessment) ---
     QUIZ = "quiz"                         # QCM, Vrai/Faux, réponses courtes

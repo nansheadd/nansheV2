@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import os
 import ssl
+from time import perf_counter
 from typing import Any
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.exc import OperationalError
@@ -132,6 +133,54 @@ sync_engine: Engine
 SessionLocal: sessionmaker
 
 
+def _install_slow_query_logger(engine: Engine) -> None:
+    """Attach callbacks that warn when queries exceed the configured budget."""
+
+    threshold_ms = max(getattr(settings, "SQLALCHEMY_SLOW_QUERY_THRESHOLD_MS", 0) or 0, 0)
+    if threshold_ms == 0:
+        return
+
+    marker = "_nanshe_slow_query_hook"
+    if getattr(engine, marker, False):  # pragma: no cover - defensive guard
+        return
+
+    setattr(engine, marker, True)
+
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[override]
+        context._nanshe_query_start = perf_counter()
+
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[override]
+        start = getattr(context, "_nanshe_query_start", None)
+        if start is None:
+            return
+
+        elapsed_ms = (perf_counter() - start) * 1000.0
+        if elapsed_ms < threshold_ms:
+            return
+
+        snippet = " ".join(statement.split()) if isinstance(statement, str) else str(statement)
+        if len(snippet) > 200:
+            snippet = snippet[:197] + "..."
+
+        try:
+            params_preview = repr(parameters)
+        except Exception:  # pragma: no cover - extremely defensive
+            params_preview = "<unavailable>"
+
+        if len(params_preview) > 200:
+            params_preview = params_preview[:197] + "..."
+
+        logger.warning(
+            "SQL lente (%.1f ms) - %s | params=%s",
+            elapsed_ms,
+            snippet,
+            params_preview,
+        )
+
+    event.listen(engine, "before_cursor_execute", _before_cursor_execute)
+    event.listen(engine, "after_cursor_execute", _after_cursor_execute)
+
+
 def configure_database(database_url: str | None = None, *, allow_fallback: bool = True) -> None:
     """Initialise the engines and session factory.
 
@@ -160,6 +209,12 @@ def configure_database(database_url: str | None = None, *, allow_fallback: bool 
         pool_pre_ping=True,
         connect_args=sync_connect_args,
     )
+
+    _install_slow_query_logger(candidate_sync_engine)
+    try:
+        _install_slow_query_logger(candidate_async_engine.sync_engine)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("Impossible d'installer le logger SQL sur le moteur async.")
 
     # Verify the connection eagerly so we can provide a clearer error and/or
     # transparently switch to SQLite before the rest of the application boots.

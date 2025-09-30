@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -85,14 +86,15 @@ def login_for_access_token(
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout() -> JSONResponse:
+    response = JSONResponse({"message": "Logout successful"})
     response.delete_cookie(
         key="access_token",
         path="/",
         samesite="none",
         secure=settings.ENVIRONMENT == "production",
     )
-    return {"message": "Logout successful"}
+    return response
 
 @router.get("/me", response_model=user_schema.User)
 def read_users_me(current_user: User = Depends(get_current_user)):
