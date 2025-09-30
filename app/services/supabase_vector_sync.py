@@ -197,6 +197,13 @@ async def ensure_supabase_vector_sync() -> None:
         logger.info("Synchronisation Supabase désactivée par configuration.")
         return
 
+    if settings.ENVIRONMENT.lower() not in {"production", "staging"}:
+        logger.info(
+            "Synchronisation Supabase ignorée pour l'environnement '%s'.",
+            settings.ENVIRONMENT,
+        )
+        return
+
     # ``requests`` is blocking, run the seeding in a worker thread to avoid
     # blocking the FastAPI event loop on startup.
     try:

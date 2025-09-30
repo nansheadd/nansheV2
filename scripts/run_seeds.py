@@ -24,6 +24,7 @@ from app.models.capsule.language_roadmap_model import (
 )
 from app.services.rag_utils import get_embedding
 from app.models.user.badge_model import Badge
+from app.crud import coach_tutorial_crud
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -321,6 +322,19 @@ def seed_language_roadmaps(db: Session, system_user: User):
     logger.info(f"✅ Phase 3 terminée: {count_added} roadmaps ajoutées, {count_updated} mises à jour.")
 
 
+def seed_tutorial_states(db: Session, system_user: User):
+    """Ensure default tutorial states exist for the system account."""
+    logger.info("--- Phase 4: Initialisation des tutoriels du coach ---")
+    coach_tutorial_crud.upsert_state(
+        db,
+        system_user,
+        tutorial_key="app_onboarding",
+        status="completed",
+        last_step_index=0,
+    )
+    logger.info("✅ Phase 4 terminée: tutoriel d'onboarding marqué comme complété pour l'utilisateur système.")
+
+
 
 if __name__ == "__main__":
     db_session = SessionLocal()
@@ -333,5 +347,6 @@ if __name__ == "__main__":
         seed_skills(db_session)
         seed_badges(db_session)
         seed_language_roadmaps(db_session, user)
+        seed_tutorial_states(db_session, user)
     finally:
         db_session.close()

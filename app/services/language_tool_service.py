@@ -117,7 +117,7 @@ class LanguageToolService:
             )
             .filter(
                 or_(
-                    Capsule.user_id == self.user.id,
+                    Capsule.creator_id == self.user.id,
                     UserCapsuleEnrollment.id.isnot(None),
                 )
             )

@@ -108,6 +108,7 @@ def main() -> None:
         run_seeds.seed_skills(session)
         run_seeds.seed_badges(session)
         run_seeds.seed_language_roadmaps(session, system_user)
+        run_seeds.seed_tutorial_states(session, system_user)
     finally:
         session.close()
 

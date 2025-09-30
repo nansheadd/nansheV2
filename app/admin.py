@@ -300,37 +300,38 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
 
         study_stats = await _compute_study_metrics(session)
 
-        feedback_rows = await session.execute(
-            select(
-                ContentFeedback.id,
-                ContentFeedback.content_type,
-                ContentFeedback.content_id,
-                ContentFeedback.rating,
-                ContentFeedback.status,
-                User.username,
-                ContentFeedbackDetail.reason_code,
-                ContentFeedbackDetail.comment,
-            )
-            .join(User, ContentFeedback.user_id == User.id, isouter=True)
-            .join(
-                ContentFeedbackDetail,
-                ContentFeedbackDetail.feedback_id == ContentFeedback.id,
-                isouter=True,
-            )
-            .where(
-                or_(
-                    ContentFeedback.rating == "disliked",
-                    ContentFeedback.status == "pending",
+        feedback_rows = (
+            await session.execute(
+                select(
+                    ContentFeedback.id.label("feedback_id"),
+                    ContentFeedback.content_type,
+                    ContentFeedback.content_id,
+                    ContentFeedback.rating,
+                    ContentFeedback.status,
+                    User.username,
+                    ContentFeedbackDetail.reason_code,
+                    ContentFeedbackDetail.comment,
                 )
+                .join(User, ContentFeedback.user_id == User.id, isouter=True)
+                .join(
+                    ContentFeedbackDetail,
+                    ContentFeedbackDetail.feedback_id == ContentFeedback.id,
+                    isouter=True,
+                )
+                .where(
+                    or_(
+                        ContentFeedback.rating == "disliked",
+                        ContentFeedback.status == "pending",
+                    )
+                )
+                .order_by(ContentFeedback.id.desc())
+                .limit(5)
             )
-            .order_by(ContentFeedback.id.desc())
-            .limit(5)
-        )
+        ).mappings().all()
 
         recent_feedback = []
-        for row in feedback_rows:
-            data = row._mapping
-            rating_value = data["rating"]
+        for data in feedback_rows:
+            rating_value = data.get("rating")
             status_value = data["status"]
             rating_label = (
                 "Positif"
@@ -347,7 +348,7 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
             }.get(status_value, status_value or "—")
             recent_feedback.append(
                 {
-                    "id": _safe_int(data["id"]),
+                    "id": _safe_int(data.get("feedback_id")),
                     "user": data["username"] or "—",
                     "content": f"{data['content_type']} #{data['content_id']}",
                     "rating": rating_value,
@@ -361,29 +362,30 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
                 }
             )
 
-        problem_rows = await session.execute(
-            select(
-                ClassificationFeedback.id,
-                ClassificationFeedback.input_text,
-                ClassificationFeedback.final_domain,
-                ClassificationFeedback.final_area,
-                ClassificationFeedback.predicted_domain,
-                ClassificationFeedback.created_at,
-                User.username,
+        problem_rows = (
+            await session.execute(
+                select(
+                    ClassificationFeedback.id.label("feedback_id"),
+                    ClassificationFeedback.input_text,
+                    ClassificationFeedback.final_domain,
+                    ClassificationFeedback.final_area,
+                    ClassificationFeedback.predicted_domain,
+                    ClassificationFeedback.created_at,
+                    User.username,
+                )
+                .join(User, ClassificationFeedback.user_id == User.id, isouter=True)
+                .where(ClassificationFeedback.is_correct.is_(False))
+                .order_by(desc(ClassificationFeedback.created_at))
+                .limit(5)
             )
-            .join(User, ClassificationFeedback.user_id == User.id, isouter=True)
-            .where(ClassificationFeedback.is_correct.is_(False))
-            .order_by(desc(ClassificationFeedback.created_at))
-            .limit(5)
-        )
+        ).mappings().all()
 
         recent_problems = []
-        for row in problem_rows:
-            data = row._mapping
+        for data in problem_rows:
             created_at = data.get("created_at")
             recent_problems.append(
                 {
-                    "id": _safe_int(data["id"]),
+                    "id": _safe_int(data.get("feedback_id")),
                     "user": data["username"] or "—",
                     "domain": data.get("final_domain"),
                     "area": data.get("final_area"),
@@ -432,6 +434,50 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
         "recent": recent_feedback,
     }
 
+    capsule_rows = (
+        await session.execute(
+            select(
+                Capsule.id.label("capsule_id"),
+                Capsule.title,
+                Capsule.main_skill,
+                Capsule.domain,
+                Capsule.area,
+                Capsule.generation_status,
+                User.username,
+                func.count(Molecule.id).label("molecule_count"),
+            )
+            .join(User, Capsule.creator_id == User.id, isouter=True)
+            .join(Granule, Granule.capsule_id == Capsule.id, isouter=True)
+            .join(Molecule, Molecule.granule_id == Granule.id, isouter=True)
+            .group_by(
+                Capsule.id,
+                Capsule.title,
+                Capsule.main_skill,
+                Capsule.domain,
+                Capsule.area,
+                Capsule.generation_status,
+                User.username,
+            )
+            .order_by(Capsule.id.desc())
+            .limit(6)
+        )
+    ).mappings().all()
+
+    capsules_recent = [
+        {
+            "id": _safe_int(data.get("capsule_id")),
+            "title": data.get("title") or "(Sans titre)",
+            "main_skill": data.get("main_skill") or "—",
+            "domain": data.get("domain") or "—",
+            "area": data.get("area") or "—",
+            "author": data.get("username") or "—",
+            "created": "—",
+            "molecules": _safe_int(data.get("molecule_count")),
+            "status": data.get("generation_status") or "—",
+        }
+        for data in capsule_rows
+    ]
+
     capsule_stats = {
         "total": capsule_total,
         "completed": capsule_completed,
@@ -458,6 +504,7 @@ async def _collect_dashboard_metrics() -> dict[str, Any]:
                 "color": "bg-danger",
             },
         ],
+        "recent": capsules_recent,
     }
 
     problem_stats = {
@@ -674,7 +721,7 @@ class CapsuleAdmin(ModelView, model=Capsule):
     ]
     column_searchable_list = [Capsule.title, Capsule.main_skill, Capsule.domain, Capsule.area]
     column_filters: list = []
-    column_default_sort = [Capsule.id]
+    column_default_sort = [(Capsule.id, False)]
     column_labels = {
         Capsule.main_skill: "Compétence principale",
         Capsule.generation_status: "Statut",
@@ -687,6 +734,20 @@ class CapsuleAdmin(ModelView, model=Capsule):
         column_formatters_detail = {
             _CAPSULE_PLAN_ATTR: lambda m, _: _json_full(getattr(m, "learning_plan_json", None)),
         }
+
+    async def delete_model(self, request: Request, pk: str) -> bool:  # type: ignore[override]
+        async with self.session_maker() as session:  # type: ignore[attr-defined]
+            try:
+                identity = int(pk)
+            except (TypeError, ValueError):
+                return False
+
+            instance = await session.get(self.model, identity)
+            if instance is None:
+                return False
+            await session.delete(instance)
+            await session.commit()
+        return True
 
 
 class GranuleAdmin(ModelView, model=Granule):

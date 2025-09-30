@@ -8,6 +8,7 @@ from app.models.user.user_model import User
 from app.crud import (
     coach_conversation_crud,
     coach_energy_crud,
+    coach_tutorial_crud,
     toolbox_crud,
     toolbox_notes_crud,
 )
@@ -15,6 +16,8 @@ from app.schemas.toolbox import (
     CoachConversationMessageOut,
     CoachConversationThreadDetail,
     CoachConversationThreadOut,
+    CoachTutorialStateOut,
+    CoachTutorialStateUpdate,
     MoleculeNoteCreate,
     MoleculeNoteOut,
     MoleculeNoteUpdate,
@@ -66,6 +69,46 @@ def _extract_limit(limit: int | None, payload: JournalRequest | None) -> int:
     if limit is not None:
         return limit
     return 10
+
+@router.get(
+    "/coach/tutorials/states",
+    response_model=list[CoachTutorialStateOut],
+    summary="Lister les états de tutoriel pour l'utilisateur",
+)
+def list_coach_tutorial_states(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CoachTutorialStateOut]:
+    states = coach_tutorial_crud.list_states_for_user(db, current_user)
+    return [CoachTutorialStateOut.model_validate(state) for state in states]
+
+
+@router.put(
+    "/coach/tutorials/{tutorial_key}/state",
+    response_model=CoachTutorialStateOut,
+    summary="Mettre à jour l'état d'un tutoriel coach",
+)
+def update_coach_tutorial_state(
+    tutorial_key: str,
+    payload: CoachTutorialStateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CoachTutorialStateOut:
+    if payload.status is None and payload.last_step_index is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="no_update_payload",
+        )
+
+    state = coach_tutorial_crud.upsert_state(
+        db,
+        current_user,
+        tutorial_key=tutorial_key,
+        status=payload.status,
+        last_step_index=payload.last_step_index,
+    )
+    return CoachTutorialStateOut.model_validate(state)
+
 
 @router.post("/coach")
 def handle_coach_request(

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from ..analytics.classification_feedback_model import ClassificationFeedback
     from ..toolbox.coach_energy_model import CoachEnergyWallet
     from ..toolbox.coach_conversation_model import CoachConversationThread
+    from ..toolbox.coach_tutorial_model import CoachTutorialState
 
 # On définit l'énumération pour le statut d'abonnement
 class SubscriptionStatus(str, enum.Enum):
@@ -78,6 +79,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
     coach_conversation_threads: Mapped[List["CoachConversationThread"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    tutorial_states: Mapped[List["CoachTutorialState"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     molecule_reviews: Mapped[List["UserMoleculeReview"]] = relationship(

@@ -47,6 +47,7 @@ from app.models.toolbox.coach_conversation_model import (
     CoachConversationMessage,
     CoachConversationThread,
 )
+from app.models.toolbox.coach_tutorial_model import CoachTutorialState
 from app.models.vote.feature_vote_model import FeaturePoll, FeaturePollOption, FeaturePollVote
 
 __all__ = (
@@ -85,6 +86,7 @@ __all__ = (
     "CoachEnergyWallet",
     "CoachConversationThread",
     "CoachConversationMessage",
+    "CoachTutorialState",
     "FeaturePoll",
     "FeaturePollOption",
     "FeaturePollVote",

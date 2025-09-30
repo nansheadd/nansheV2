@@ -7,6 +7,11 @@ from .coach_conversation_schema import (
     CoachConversationThreadList,
     CoachConversationThreadOut,
 )
+from .coach_tutorial_schema import (
+    CoachTutorialStateOut,
+    CoachTutorialStateUpdate,
+    TutorialStatus,
+)
 
 __all__ = (
     "MoleculeNoteBase",
@@ -17,4 +22,7 @@ __all__ = (
     "CoachConversationThreadOut",
     "CoachConversationThreadDetail",
     "CoachConversationThreadList",
+    "CoachTutorialStateOut",
+    "CoachTutorialStateUpdate",
+    "TutorialStatus",
 )
