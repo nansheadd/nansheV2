@@ -41,3 +41,44 @@ Une interface graphique est disponible sur `http://localhost:8000/admin` (base U
 2. Authentifiez-vous depuis le formulaire `/admin/login` avec `username` + `password` de ce super-utilisateur.
 
 > Les sessions sont gérées par cookie sécurisé via `SessionMiddleware`. En cas de perte d'accès, videz la session ou reconnectez-vous.
+
+## Déploiement sur Fly.io
+
+Cette application FastAPI peut maintenant être déployée sur [Fly.io](https://fly.io/) grâce au `Dockerfile` et au `fly.toml` fournis.
+
+1. **Installer la CLI Fly** et se connecter :
+   ```bash
+   curl -L https://fly.io/install.sh | sh
+   fly auth login
+   ```
+2. **Configurer l'application** : mettez à jour la valeur `app` dans `fly.toml` avec le nom de votre application Fly, puis initialisez le projet (sans déploiement automatique) :
+   ```bash
+   fly launch --no-deploy
+   ```
+3. **Créer et attacher une base PostgreSQL** (requis en production) :
+   ```bash
+   fly postgres create --name <nom-bdd> --region cdg
+   fly postgres attach --app <nom-app> <nom-bdd>
+   ```
+   L'attachement configure automatiquement le secret `DATABASE_URL`.
+4. **Définir les secrets obligatoires** :
+   ```bash
+   fly secrets set \
+  SECRET_KEY="<secret JWT>" \
+  RESEND_API_KEY="<token Resend>" \
+  FRONTEND_BASE_URL="https://<votre-front>" \
+  BACKEND_BASE_URL="https://<votre-domaine>" \
+  EMAIL_FROM="support@<votredomaine>"
+   ```
+   Ajoutez également les clés facultatives nécessaires (`OPENAI_API_KEY`, `SUPABASE_URL`, etc.).
+5. **Déployer** :
+   ```bash
+   fly deploy
+   ```
+6. **Suivre les logs et l'état** :
+   ```bash
+   fly status
+   fly logs
+   ```
+
+Le service écoute sur le port `8080` (configuré dans `fly.toml`) et expose la racine `/` pour les vérifications de santé.
