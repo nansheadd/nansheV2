@@ -72,6 +72,9 @@ def login_for_access_token(
 
     # Cookie cross-site pour front/back sur domaines différents (Vercel)
     secure_cookie = settings.ENVIRONMENT == "production"
+    cookie_max_age = security.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+
     response.set_cookie(
         key="access_token",
         value=access_token,   # JWT brut (pas "Bearer ")
@@ -79,6 +82,8 @@ def login_for_access_token(
         samesite="none",      # <- crucial pour cross-site
         secure=secure_cookie, # <- True en prod
         path="/",
+        max_age=cookie_max_age,
+        expires=expires_at,
     )
 
     # Tu renvoies aussi le token dans le body pour le fallback localStorage (dev)
