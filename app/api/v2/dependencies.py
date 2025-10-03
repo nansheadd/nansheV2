@@ -11,6 +11,7 @@ from jose import JWTError, ExpiredSignatureError, jwt
 
 from app.db.session import SessionLocal
 from app.core import security
+from app.core.config import settings
 from app.models.user.user_model import User
 
 logging.basicConfig(level=logging.INFO)
@@ -146,7 +147,22 @@ def _decode_user_from_token(token: str | None, db: Session) -> User:
         user_id = int(user_id_str)
     except ExpiredSignatureError:
         log.warning("Validation échouée: Le token a expiré.")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_expired")
+        cookie_parts = [
+            "access_token=",
+            "Path=/",
+            "Max-Age=0",
+            "SameSite=None",
+            "HttpOnly",
+        ]
+        if settings.ENVIRONMENT == "production":
+            cookie_parts.append("Secure")
+        clear_cookie_header = "; ".join(cookie_parts)
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="token_expired",
+            headers={"Set-Cookie": clear_cookie_header},
+        )
     except (JWTError, ValueError, TypeError):
         log.warning("Validation échouée: Le token est invalide ou mal formé.")
         raise credentials_exception

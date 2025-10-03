@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     EMAIL_RESET_TTL_MIN: int = 30
     RESEND_WEBHOOK_SECRET: str | None = None
 
+    # --- Auth configuration ---
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     # --- Supabase Vector Store configuration ---
     SUPABASE_URL: AnyHttpUrl | None = None
     SUPABASE_SERVICE_ROLE_KEY: str | None = None
