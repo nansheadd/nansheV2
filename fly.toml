@@ -1,7 +1,6 @@
 # Fly.io deployment configuration for Nanshe API V2.
-# Remplacez la valeur de `app` par le nom de votre application Fly.
 app = "nanshe-v2"
-primary_region = "cdg"
+primary_region = "ams"
 
 [build]
   dockerfile = "Dockerfile"
@@ -14,20 +13,30 @@ primary_region = "cdg"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+
+  # garde les machines allumées (évite le scale-to-zero pour les WS)
   auto_start_machines = true
-  min_machines_running = 0
+  auto_stop_machines = false
+  # on veut 2 machines en permanence
+  min_machines_running = 2
+
   processes = ["app"]
 
+  # important pour WS: on raisonne en connexions, pas en "requests"
   [http_service.concurrency]
-    type = "requests"
-    hard_limit = 25
-    soft_limit = 20
+    type = "connections"
+    soft_limit = 100
+    hard_limit = 200
 
   [[http_service.checks]]
     name = "health"
     path = "/"
-    method = "get"
+    method = "GET"
     interval = "15s"
-    timeout = "5s"
-    grace_period = "30s"
+    timeout = "2s"
+    grace_period = "10s"
+
+# Taille PERSISTANTE des machines (appliquée à chaque deploy)
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
