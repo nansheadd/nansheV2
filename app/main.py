@@ -6,6 +6,7 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.proxyheaders import ProxyHeadersMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 # Imports de l'application
@@ -51,6 +52,11 @@ _REQUEST_SLOW_THRESHOLD_MS = max(getattr(settings, "REQUEST_SLOW_THRESHOLD_MS", 
 app = FastAPI(
     title="Nanshe API V2",
     openapi_url="/api/v2/openapi.json"
+)
+
+app.add_middleware(
+    ProxyHeadersMiddleware,
+    trusted_hosts=[settings.BACKEND_BASE_URL.host],
 )
 
 
