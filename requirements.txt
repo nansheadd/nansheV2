@@ -27,3 +27,4 @@ starlette==0.47.1
 stripe==12.5.1
 websocket-client==1.8.0
 itsdangerous==2.2.0
+uvicorn==0.32.0
