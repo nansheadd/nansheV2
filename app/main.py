@@ -5,6 +5,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 # Imports de l'application
@@ -168,7 +169,15 @@ def _build_cors_config() -> tuple[list[str], re.Pattern[str] | None]:
 
 
 # --- Configuration des Middlewares ---
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+_session_middleware_config: dict[str, object] = {"secret_key": settings.SECRET_KEY}
+
+if settings.ENVIRONMENT.lower() == "production":
+    _session_middleware_config.update({
+        "https_only": True,
+        "same_site": "lax",
+    })
+
+app.add_middleware(SessionMiddleware, **_session_middleware_config)
 
 cors_origins, cors_regex = _build_cors_config()
 _HTMX_HEADERS = {
@@ -191,6 +200,10 @@ if cors_regex is not None:
     cors_kwargs["allow_origin_regex"] = cors_regex
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
+
+
+if settings.ENVIRONMENT.lower() == "production":
+    app.add_middleware(HTTPSRedirectMiddleware)
 
 
 # --- Initialisation de l'Admin ---
