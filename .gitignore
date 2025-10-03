@@ -3,6 +3,7 @@ venv/
 *.venv
 env/
 .env
+.env.fly
 
 # Fichiers de cache Python
 __pycache__/
