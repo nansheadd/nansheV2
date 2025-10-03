@@ -6,7 +6,11 @@ from time import perf_counter
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+
+try:  # Starlette < 0.47
+    from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+except ImportError:  # pragma: no cover - Starlette >= 0.47
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 # Imports de l'application
