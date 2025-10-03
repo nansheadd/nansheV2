@@ -1,0 +1,33 @@
+# Fly.io deployment configuration for Nanshe API V2.
+# Remplacez la valeur de `app` par le nom de votre application Fly.
+app = "nanshe-v2"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  PORT = "8080"
+  DISABLE_SQLITE_FALLBACK = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[http_service.checks]]
+    name = "health"
+    path = "/"
+    method = "get"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
