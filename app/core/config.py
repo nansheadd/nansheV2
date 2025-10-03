@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     # Performance instrumentation
     SQLALCHEMY_SLOW_QUERY_THRESHOLD_MS: int = 300
     REQUEST_SLOW_THRESHOLD_MS: int = 400
+    DATABASE_CONNECTION_MAX_RETRIES: int = 5
+    DATABASE_CONNECTION_RETRY_BACKOFF_SECONDS: float = 1.0
 
     # Classification configuration
     DB_CLASSIFIER_DEFAULT_THRESHOLD: float = 0.2

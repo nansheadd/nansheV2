@@ -10,8 +10,9 @@ from __future__ import annotations
 import logging
 import os
 import ssl
+import time
 from time import perf_counter
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
@@ -181,6 +182,45 @@ def _install_slow_query_logger(engine: Engine) -> None:
     event.listen(engine, "after_cursor_execute", _after_cursor_execute)
 
 
+def _verify_database_connection(engine: Engine) -> None:
+    """Ping *engine* with retry logic to tolerate transient outages."""
+
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return
+
+    max_retries = max(int(getattr(settings, "DATABASE_CONNECTION_MAX_RETRIES", 1) or 1), 1)
+    backoff = max(float(getattr(settings, "DATABASE_CONNECTION_RETRY_BACKOFF_SECONDS", 1.0) or 1.0), 0.1)
+
+    attempt = 1
+    last_exc: Optional[Exception] = None
+
+    while attempt <= max_retries:
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            return
+        except (OperationalError, OSError) as exc:
+            last_exc = exc
+            if attempt >= max_retries:
+                break
+
+            delay = min(30.0, backoff * (2 ** (attempt - 1)))
+            logger.warning(
+                "Connexion à la base de données échouée (tentative %s/%s): %s. Nouvelle tentative dans %.1f s.",
+                attempt,
+                max_retries,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+            attempt += 1
+
+    if last_exc is not None:
+        raise last_exc
+
+
 def configure_database(database_url: str | None = None, *, allow_fallback: bool = True) -> None:
     """Initialise the engines and session factory.
 
@@ -219,9 +259,7 @@ def configure_database(database_url: str | None = None, *, allow_fallback: bool 
     # Verify the connection eagerly so we can provide a clearer error and/or
     # transparently switch to SQLite before the rest of the application boots.
     try:
-        if candidate_sync_engine.dialect.name != "sqlite":
-            with candidate_sync_engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
+        _verify_database_connection(candidate_sync_engine)
     except (OperationalError, OSError) as exc:
         if allow_fallback and _should_enable_sqlite_fallback():
             logger.warning(
